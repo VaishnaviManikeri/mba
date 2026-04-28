@@ -10,9 +10,9 @@ const app = express();
 // Middleware
 const corsOptions = {
   origin: [
-    "http://localhost:5173",        // Vite local
-    "http://localhost:3000",        // React local
-    "https://adityainstitutemanagement.com"  // Render frontend URL
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://adityainstitutemanagement.com"
   ],
   methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
@@ -26,6 +26,27 @@ mongoose.connect(process.env.MONGODB_URI)
 .then(() => console.log('MongoDB connected'))
 .catch(err => console.log(err));
 
+// ====================== STATUS API ======================
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: "Backend is running successfully",
+    server: "Hostinger VPS",
+    port: 5018,
+    status: "online"
+  });
+});
+
+app.get('/api/status', (req, res) => {
+  res.json({
+    success: true,
+    message: "Backend is running successfully",
+    server: "Hostinger VPS",
+    port: 5018,
+    status: "online"
+  });
+});
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/gallery', require('./routes/gallery'));
@@ -35,5 +56,7 @@ app.use('/api/careers', require('./routes/careers'));
 app.use('/api/blogs', require('./routes/blogs'));
 app.use('/api/admin', require('./routes/admin'));
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// ====================== PORT CHANGED ======================
+const PORT = 5018;
+
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
