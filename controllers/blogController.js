@@ -10,6 +10,18 @@ exports.getAll = async (req, res) => {
     }
 };
 
+exports.getBySlug = async (req, res) => {
+    try {
+        const blog = await Blog.findOne({ slug: req.params.slug });
+        if (!blog) {
+            return res.status(404).json({ message: 'Blog not found' });
+        }
+        res.json(blog);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
 exports.getOne = async (req, res) => {
     try {
         const blog = await Blog.findById(req.params.id);
@@ -22,9 +34,22 @@ exports.getOne = async (req, res) => {
     }
 };
 
+exports.incrementViews = async (req, res) => {
+    try {
+        const blog = await Blog.findByIdAndUpdate(
+            req.params.id,
+            { $inc: { views: 1 } },
+            { new: true }
+        );
+        res.json({ views: blog.views });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
 exports.create = async (req, res) => {
     try {
-        const { title, content, author, tags } = req.body;
+        const { title, content, author, tags, metaTitle, metaDescription } = req.body;
 
         let imageUrl = '';
         let publicId = '';
@@ -40,7 +65,9 @@ exports.create = async (req, res) => {
             author,
             imageUrl,
             publicId,
-            tags: tags ? tags.split(',') : []
+            tags: tags ? tags.split(',') : [],
+            metaTitle: metaTitle || title,
+            metaDescription: metaDescription || content.substring(0, 160)
         });
 
         await newBlog.save();
@@ -57,7 +84,6 @@ exports.update = async (req, res) => {
         const existingBlog = await Blog.findById(req.params.id);
         
         if (req.file) {
-            // Delete old image from Cloudinary
             if (existingBlog.publicId) {
                 await cloudinary.uploader.destroy(existingBlog.publicId);
             }
@@ -85,7 +111,6 @@ exports.delete = async (req, res) => {
     try {
         const blog = await Blog.findById(req.params.id);
         
-        // Delete image from Cloudinary
         if (blog.publicId) {
             await cloudinary.uploader.destroy(blog.publicId);
         }
