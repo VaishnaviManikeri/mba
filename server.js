@@ -54,6 +54,11 @@ app.use('/api/gallery', require('./routes/gallery'));
 app.use('/api/announcements', require('./routes/announcements'));
 app.use('/api/notices', require('./routes/notices'));
 app.use('/api/careers', require('./routes/careers'));
+// Add logging middleware for blog routes
+app.use('/api/blogs', (req, res, next) => {
+    console.log(`${req.method} ${req.url} - Blog route accessed`);
+    next();
+});
 app.use('/api/blogs', require('./routes/blogs'));
 app.use('/api/admin', require('./routes/admin'));
 
