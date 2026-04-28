@@ -6,7 +6,9 @@ const { upload } = require('../config/cloudinary');
 
 // Public routes
 router.get('/', blogController.getAll);
+router.get('/slug/:slug', blogController.getBySlug);
 router.get('/:id', blogController.getOne);
+router.post('/:id/view', blogController.incrementViews);
 
 // Admin routes
 router.post('/', auth, upload.single('image'), blogController.create);
