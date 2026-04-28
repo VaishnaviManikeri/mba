@@ -54,7 +54,7 @@ app.use('/api/gallery', require('./routes/gallery'));
 app.use('/api/announcements', require('./routes/announcements'));
 app.use('/api/notices', require('./routes/notices'));
 app.use('/api/careers', require('./routes/careers'));
-app.use('/api/blogs', require('./routes/blogs'));
+app.use('/api/blog', require('./routes/blogs'));
 app.use('/api/admin', require('./routes/admin'));
 
 // ====================== PORT CHANGED ======================
