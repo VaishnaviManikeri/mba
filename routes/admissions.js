@@ -6,9 +6,6 @@ const auth = require('../middleware/auth');
 // Public route - Submit application
 router.post('/submit', admissionController.submitApplication);
 
-// Test email route (for debugging)
-router.post('/test-email', admissionController.testEmail);
-
 // Admin only routes
 router.get('/all', auth, admissionController.getAllApplications);
 router.get('/statistics', auth, admissionController.getStatistics);
