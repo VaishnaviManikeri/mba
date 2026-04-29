@@ -5,6 +5,8 @@ const Admission = require('../models/Admission');
 
 router.post('/submit', async (req, res) => {
   try {
+    console.log('BODY:', req.body);
+
     const {
       name,
       email,
@@ -14,63 +16,71 @@ router.post('/submit', async (req, res) => {
       message
     } = req.body;
 
-    // Validation
+    // Validate required fields
     if (!name || !email || !phone || !course || !qualification) {
       return res.status(400).json({
         success: false,
-        message: 'Please fill all required fields'
+        message: 'All required fields are mandatory'
       });
     }
 
-    // Save in MongoDB
-    const newAdmission = new Admission({
+    // Save to MongoDB
+    const savedData = await Admission.create({
       name,
       email,
       phone,
       course,
       qualification,
-      message
+      message: message || ''
     });
 
-    await newAdmission.save();
+    console.log('Saved Admission ID:', savedData._id);
 
-    // Mail Config
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
+    // Send email if credentials exist
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      try {
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS
+          }
+        });
+
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: 'vaishnavimanikeri@gmail.com',
+          subject: 'New Admission Form Submitted',
+          html: `
+            <h2>New Admission Enquiry</h2>
+            <p><strong>Name:</strong> ${name}</p>
+            <p><strong>Email:</strong> ${email}</p>
+            <p><strong>Phone:</strong> ${phone}</p>
+            <p><strong>Course:</strong> ${course}</p>
+            <p><strong>Qualification:</strong> ${qualification}</p>
+            <p><strong>Message:</strong> ${message || 'N/A'}</p>
+          `
+        });
+
+        console.log('Email sent successfully');
+      } catch (mailError) {
+        console.error('Mail Error:', mailError.message);
       }
-    });
+    } else {
+      console.log('EMAIL_USER or EMAIL_PASS missing in environment variables');
+    }
 
-    // Send Mail
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: 'vaishnavimanikeri@gmail.com',
-      subject: 'New Admission Form Submitted',
-      html: `
-        <h2>New Admission Enquiry</h2>
-
-        <p><b>Name:</b> ${name}</p>
-        <p><b>Email:</b> ${email}</p>
-        <p><b>Phone:</b> ${phone}</p>
-        <p><b>Course:</b> ${course}</p>
-        <p><b>Qualification:</b> ${qualification}</p>
-        <p><b>Message:</b> ${message || 'N/A'}</p>
-      `
-    });
-
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Application submitted successfully'
     });
 
   } catch (error) {
-    console.log(error);
+    console.error('MAIN ERROR:', error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: error.message || 'Server error'
     });
   }
 });
