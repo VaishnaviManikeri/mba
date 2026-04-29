@@ -3,40 +3,60 @@ const router = express.Router();
 const Admission = require('../models/Admission');
 const nodemailer = require('nodemailer');
 
-// Create email transporter with more detailed configuration
+// IMPORTANT: Place specific routes BEFORE parameterized routes
+// Test email endpoint - MUST be before /:id route
+router.get('/test-email', async (req, res) => {
+  console.log('Test email endpoint called');
+  try {
+    // Check if email config exists
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      return res.json({
+        success: false,
+        message: 'Email configuration missing',
+        emailUserSet: !!process.env.EMAIL_USER,
+        emailPassSet: !!process.env.EMAIL_PASS
+      });
+    }
+    
+    // Create transporter
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      }
+    });
+    
+    // Verify connection
+    await transporter.verify();
+    
+    res.json({
+      success: true,
+      message: 'Email configuration is working!',
+      emailUser: process.env.EMAIL_USER
+    });
+  } catch (error) {
+    console.error('Test email error:', error);
+    res.json({
+      success: false,
+      message: error.message,
+      emailUser: process.env.EMAIL_USER ? 'Set' : 'Not set'
+    });
+  }
+});
+
+// Create email transporter
 const createTransporter = () => {
-  console.log('Creating email transporter...');
-  console.log('Email User:', process.env.EMAIL_USER);
-  console.log('Email Pass exists:', !!process.env.EMAIL_PASS);
-  
   return nodemailer.createTransport({
     service: 'gmail',
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS
-    },
-    debug: true, // Enable debug output
-    logger: true  // Log SMTP traffic
+    }
   });
 };
 
-// Test email configuration function
-const testEmailConfig = async () => {
-  try {
-    const transporter = createTransporter();
-    await transporter.verify();
-    console.log('✅ Email configuration is valid!');
-    return true;
-  } catch (error) {
-    console.error('❌ Email configuration error:', error.message);
-    return false;
-  }
-};
-
-// Run test on module load
-testEmailConfig();
-
-// Helper function to send email with better error handling
+// Helper function to send email
 const sendAdmissionEmail = async (admissionData) => {
   const { name, email, phone, course, qualification, message } = admissionData;
   
@@ -44,7 +64,7 @@ const sendAdmissionEmail = async (admissionData) => {
   
   const transporter = createTransporter();
   
-  // Email to admin (vaishnavimanikeri@gmail.com)
+  // Email to admin
   const adminMailOptions = {
     from: `"AIMS Admission System" <${process.env.EMAIL_USER}>`,
     to: 'vaishnavimanikeri@gmail.com',
@@ -159,7 +179,7 @@ const sendAdmissionEmail = async (admissionData) => {
             
             <a href="https://adityainstitutemanagement.com" class="button">Visit Our Website</a>
             
-            <p>For any urgent queries, please call us at: <strong>+91 XXXXX XXXXX</strong></p>
+            <p>For any urgent queries, please call us at: <strong>+91 1234567890</strong></p>
             
             <p style="margin-top: 30px;">Best regards,<br>
             <strong>Admission Office</strong><br>
@@ -193,14 +213,12 @@ const sendAdmissionEmail = async (admissionData) => {
 router.post('/submit', async (req, res) => {
   console.log('\n=== NEW FORM SUBMISSION ===');
   console.log('Request Body:', req.body);
-  console.log('Headers:', req.headers);
   
   try {
     const { name, email, phone, course, qualification, message } = req.body;
     
     // Validate required fields
     if (!name || !email || !phone || !course || !qualification) {
-      console.log('Validation failed: Missing required fields');
       return res.status(400).json({
         success: false,
         message: 'Please fill all required fields'
@@ -210,27 +228,22 @@ router.post('/submit', async (req, res) => {
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      console.log('Validation failed: Invalid email format');
       return res.status(400).json({
         success: false,
         message: 'Please provide a valid email address'
       });
     }
     
-    // Validate phone (basic validation)
-    const phoneRegex = /^[0-9]{10,15}$/;
+    // Validate phone
     const cleanPhone = phone.replace(/[^0-9]/g, '');
-    if (!phoneRegex.test(cleanPhone)) {
-      console.log('Validation failed: Invalid phone number');
+    if (cleanPhone.length < 10 || cleanPhone.length > 15) {
       return res.status(400).json({
         success: false,
         message: 'Please provide a valid phone number (10-15 digits)'
       });
     }
     
-    console.log('Validation passed, saving to database...');
-    
-    // Create new admission record
+    // Save to database
     const admission = new Admission({
       name,
       email,
@@ -240,13 +253,11 @@ router.post('/submit', async (req, res) => {
       message: message || ''
     });
     
-    // Save to database
     await admission.save();
     console.log('Data saved to MongoDB, ID:', admission._id);
     
     // Send email notifications
     try {
-      console.log('Attempting to send emails...');
       await sendAdmissionEmail({
         name,
         email,
@@ -259,29 +270,19 @@ router.post('/submit', async (req, res) => {
       
       res.status(201).json({
         success: true,
-        message: 'Application submitted successfully! We have sent a confirmation email to your inbox. Our admission counselor will contact you soon.'
+        message: 'Application submitted successfully! Confirmation email sent.'
       });
       
     } catch (emailError) {
-      console.error('Email sending error:', emailError);
-      // Still return success since data is saved in DB
+      console.error('Email error:', emailError);
       res.status(201).json({
         success: true,
-        message: 'Application submitted successfully! Our admission counselor will contact you soon. (Note: Confirmation email could not be sent)'
+        message: 'Application submitted successfully! (Email notification pending)'
       });
     }
     
   } catch (error) {
     console.error('Submission error:', error);
-    
-    // Handle duplicate or validation errors
-    if (error.code === 11000) {
-      return res.status(400).json({
-        success: false,
-        message: 'This application has already been submitted.'
-      });
-    }
-    
     res.status(500).json({
       success: false,
       message: 'Server error: ' + error.message
@@ -289,7 +290,7 @@ router.post('/submit', async (req, res) => {
   }
 });
 
-// GET - Fetch all admissions (protected route for admin)
+// GET - Fetch all admissions
 router.get('/all', async (req, res) => {
   try {
     const admissions = await Admission.find().sort({ submittedAt: -1 });
@@ -307,7 +308,7 @@ router.get('/all', async (req, res) => {
   }
 });
 
-// GET - Fetch single admission by ID
+// GET - Fetch single admission by ID - MUST be LAST
 router.get('/:id', async (req, res) => {
   try {
     const admission = await Admission.findById(req.params.id);
@@ -326,24 +327,6 @@ router.get('/:id', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching application'
-    });
-  }
-});
-
-// Test email endpoint
-router.get('/test-email', async (req, res) => {
-  try {
-    const testResult = await testEmailConfig();
-    res.json({
-      success: testResult,
-      message: testResult ? 'Email configuration working' : 'Email configuration failed',
-      emailUser: process.env.EMAIL_USER ? 'Set' : 'Not set',
-      emailPass: process.env.EMAIL_PASS ? 'Set' : 'Not set'
-    });
-  } catch (error) {
-    res.json({
-      success: false,
-      error: error.message
     });
   }
 });
