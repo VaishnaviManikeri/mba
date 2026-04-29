@@ -16,7 +16,6 @@ const initEmailTransporter = () => {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
       },
-      // Increase timeout and add pool for better performance
       pool: true,
       maxConnections: 1,
       maxMessages: 100,
@@ -24,7 +23,6 @@ const initEmailTransporter = () => {
       rateLimit: 5
     });
     
-    // Verify connection
     transporter.verify((error, success) => {
       if (error) {
         console.error('Email transporter error:', error);
@@ -45,7 +43,6 @@ const sendEmailsAsync = async (admissionData) => {
     return;
   }
   
-  // Simple email template without heavy HTML (faster)
   const adminEmailText = `
 New Admission Enquiry
 
@@ -87,23 +84,25 @@ AIMS Bhubaneswar
   };
   
   try {
-    // Send emails in parallel (faster)
     await Promise.all([
       transporter.sendMail(adminMailOptions),
       transporter.sendMail(studentMailOptions)
     ]);
     console.log('Both emails sent successfully for:', emailAddress);
+    return { success: true };
   } catch (error) {
     console.error('Email sending error:', error.message);
+    return { success: false, error: error.message };
   }
 };
 
-// POST - Fast submission endpoint
+// ============= SPECIFIC ROUTES FIRST (before dynamic routes) =============
+
+// POST - Submit admission form
 router.post('/submit', async (req, res) => {
   try {
     const { name, mobileNumber, emailAddress, course } = req.body;
     
-    // Quick validation
     if (!name || !mobileNumber || !emailAddress || !course) {
       return res.status(400).json({ 
         success: false, 
@@ -111,10 +110,9 @@ router.post('/submit', async (req, res) => {
       });
     }
     
-    // Check for duplicate (fast query with lean())
     const existingSubmission = await Admission.findOne(
       { emailAddress: emailAddress.toLowerCase() }, 
-      { _id: 1 } // Only get _id for speed
+      { _id: 1 }
     ).lean();
     
     if (existingSubmission) {
@@ -124,7 +122,6 @@ router.post('/submit', async (req, res) => {
       });
     }
     
-    // Create and save in one step
     const admission = new Admission({
       name: name.trim(),
       mobileNumber,
@@ -132,10 +129,8 @@ router.post('/submit', async (req, res) => {
       course
     });
     
-    // Save to database (this is the main operation)
     await admission.save();
     
-    // Send response immediately (don't wait for emails)
     res.status(201).json({
       success: true,
       message: 'Admission form submitted successfully! We will contact you shortly.',
@@ -147,7 +142,7 @@ router.post('/submit', async (req, res) => {
       }
     });
     
-    // Send emails in background (doesn't block response)
+    // Send emails in background
     sendEmailsAsync(admission).catch(err => {
       console.error('Background email sending failed:', err);
     });
@@ -170,7 +165,55 @@ router.post('/submit', async (req, res) => {
   }
 });
 
-// GET - Fetch all admissions (with pagination for speed)
+// GET - Test email endpoint (MUST be before /:id route)
+router.get('/test-email', async (req, res) => {
+  try {
+    console.log('Test email endpoint called');
+    
+    // Check if email is configured
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email not configured. Please set EMAIL_USER and EMAIL_PASS in environment variables.',
+        config: {
+          emailUser: !!process.env.EMAIL_USER,
+          emailPass: !!process.env.EMAIL_PASS
+        }
+      });
+    }
+    
+    const testData = {
+      name: 'Test User',
+      mobileNumber: '9999999999',
+      emailAddress: 'test@example.com',
+      course: 'MBA',
+      submittedAt: new Date()
+    };
+    
+    const result = await sendEmailsAsync(testData);
+    
+    if (result && result.success) {
+      res.json({ 
+        success: true, 
+        message: 'Test email sent successfully to vaishnavimanikeri@gmail.com! Please check your inbox.' 
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to send test email. Check server logs for details.',
+        error: result?.error || 'Unknown error'
+      });
+    }
+  } catch (error) {
+    console.error('Test email error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Test email failed: ' + error.message 
+    });
+  }
+});
+
+// GET - Fetch all admissions (with pagination)
 router.get('/all', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -199,7 +242,9 @@ router.get('/all', async (req, res) => {
   }
 });
 
-// GET - Single admission
+// ============= DYNAMIC ROUTES (with :id) GO LAST =============
+
+// GET - Single admission by ID
 router.get('/:id', async (req, res) => {
   try {
     const admission = await Admission.findById(req.params.id).lean();
@@ -273,25 +318,6 @@ router.delete('/:id', async (req, res) => {
       success: false, 
       message: 'Error deleting admission' 
     });
-  }
-});
-
-// Test email endpoint
-router.post('/test-email', async (req, res) => {
-  try {
-    const testData = {
-      name: 'Test User',
-      mobileNumber: '9999999999',
-      emailAddress: 'test@example.com',
-      course: 'MBA',
-      submittedAt: new Date()
-    };
-    
-    await sendEmailsAsync(testData);
-    res.json({ success: true, message: 'Test email sent' });
-  } catch (error) {
-    console.error('Test email error:', error);
-    res.status(500).json({ success: false, message: error.message });
   }
 });
 
