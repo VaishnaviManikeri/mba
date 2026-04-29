@@ -3,33 +3,20 @@ const { sendAdminNotification, sendStudentThankYou } = require('../services/emai
 
 // Submit new admission application
 exports.submitApplication = async (req, res) => {
-    console.log('📝 Received admission application submission:', req.body);
-    
     try {
         const { name, email, phone, course, qualification, message } = req.body;
         
         // Validate required fields
         if (!name || !email || !phone || !course || !qualification) {
-            console.log('❌ Validation failed: Missing required fields');
             return res.status(400).json({ 
                 success: false, 
                 message: 'All required fields must be filled' 
             });
         }
         
-        // Validate email format
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Please provide a valid email address'
-            });
-        }
-        
         // Check if email already exists
         const existingApplication = await Admission.findOne({ email });
         if (existingApplication) {
-            console.log('❌ Duplicate application detected for email:', email);
             return res.status(400).json({ 
                 success: false, 
                 message: 'An application with this email already exists' 
@@ -48,30 +35,16 @@ exports.submitApplication = async (req, res) => {
         });
         
         await admission.save();
-        console.log('✅ Application saved to database with ID:', admission._id);
         
-        // Send email notifications asynchronously (don't block response)
-        // Use Promise.allSettled to handle both emails independently
-        const emailPromises = [
+        // Send email notifications (don't wait for response)
+        Promise.all([
             sendAdminNotification(admission),
             sendStudentThankYou(admission)
-        ];
+        ]).catch(err => console.error('Email sending error:', err));
         
-        // Don't await - send emails in background
-        Promise.allSettled(emailPromises).then(results => {
-            results.forEach((result, index) => {
-                if (result.status === 'fulfilled') {
-                    console.log(`✅ Email ${index + 1} sent successfully`);
-                } else {
-                    console.error(`❌ Email ${index + 1} failed:`, result.reason);
-                }
-            });
-        });
-        
-        // Return success response immediately
         res.status(201).json({
             success: true,
-            message: 'Application submitted successfully! A confirmation email has been sent to your email address. Our team will contact you soon.',
+            message: 'Application submitted successfully! Our team will contact you soon.',
             data: {
                 id: admission._id,
                 name: admission.name,
@@ -82,11 +55,10 @@ exports.submitApplication = async (req, res) => {
         });
         
     } catch (error) {
-        console.error('❌ Error submitting application:', error);
+        console.error('Error submitting application:', error);
         res.status(500).json({ 
             success: false, 
-            message: 'Server error. Please try again later.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            message: 'Server error. Please try again later.' 
         });
     }
 };
@@ -95,7 +67,6 @@ exports.submitApplication = async (req, res) => {
 exports.getAllApplications = async (req, res) => {
     try {
         const applications = await Admission.find().sort({ createdAt: -1 });
-        console.log(`📊 Fetched ${applications.length} applications`);
         res.json({
             success: true,
             count: applications.length,
@@ -237,42 +208,6 @@ exports.getStatistics = async (req, res) => {
         res.status(500).json({ 
             success: false, 
             message: 'Server error' 
-        });
-    }
-};
-
-// Test email endpoint
-exports.testEmail = async (req, res) => {
-    try {
-        const { sendAdminNotification, sendTestEmail } = require('../services/emailService');
-        
-        // Create test data
-        const testData = {
-            _id: 'TEST_' + Date.now(),
-            name: 'Test User',
-            email: req.body.email || process.env.ADMIN_EMAIL,
-            phone: '9999999999',
-            course: 'MBA - Test',
-            qualification: 'Graduation',
-            message: 'This is a test submission',
-            status: 'pending',
-            createdAt: new Date()
-        };
-        
-        const adminResult = await sendAdminNotification(testData);
-        const studentResult = await sendStudentThankYou(testData);
-        
-        res.json({
-            success: adminResult && studentResult,
-            message: 'Test emails sent',
-            adminEmailSent: adminResult,
-            studentEmailSent: studentResult
-        });
-    } catch (error) {
-        console.error('Test email error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
         });
     }
 };
