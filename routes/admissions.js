@@ -3,23 +3,52 @@ const router = express.Router();
 const Admission = require('../models/Admission');
 const nodemailer = require('nodemailer');
 
-// Email transporter (reuse from server.js or create new)
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-});
+// Create email transporter with more detailed configuration
+const createTransporter = () => {
+  console.log('Creating email transporter...');
+  console.log('Email User:', process.env.EMAIL_USER);
+  console.log('Email Pass exists:', !!process.env.EMAIL_PASS);
+  
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
+    },
+    debug: true, // Enable debug output
+    logger: true  // Log SMTP traffic
+  });
+};
 
-// Helper function to send email
+// Test email configuration function
+const testEmailConfig = async () => {
+  try {
+    const transporter = createTransporter();
+    await transporter.verify();
+    console.log('✅ Email configuration is valid!');
+    return true;
+  } catch (error) {
+    console.error('❌ Email configuration error:', error.message);
+    return false;
+  }
+};
+
+// Run test on module load
+testEmailConfig();
+
+// Helper function to send email with better error handling
 const sendAdmissionEmail = async (admissionData) => {
   const { name, email, phone, course, qualification, message } = admissionData;
   
-  // Email to admin
+  console.log('Preparing to send emails for:', email);
+  
+  const transporter = createTransporter();
+  
+  // Email to admin (vaishnavimanikeri@gmail.com)
   const adminMailOptions = {
-    from: process.env.EMAIL_USER,
+    from: `"AIMS Admission System" <${process.env.EMAIL_USER}>`,
     to: 'vaishnavimanikeri@gmail.com',
+    replyTo: email,
     subject: `🎓 New Admission Application - ${name}`,
     html: `
       <!DOCTYPE html>
@@ -88,7 +117,7 @@ const sendAdmissionEmail = async (admissionData) => {
 
   // Auto-reply to student
   const studentMailOptions = {
-    from: process.env.EMAIL_USER,
+    from: `"AIMS Admission Office" <${process.env.EMAIL_USER}>`,
     to: email,
     subject: 'Thank you for applying to AIMS Bhubaneswar',
     html: `
@@ -142,20 +171,36 @@ const sendAdmissionEmail = async (admissionData) => {
     `
   };
 
-  // Send both emails
-  await transporter.sendMail(adminMailOptions);
-  await transporter.sendMail(studentMailOptions);
-  
-  return true;
+  try {
+    // Send email to admin
+    console.log('Sending email to admin: vaishnavimanikeri@gmail.com');
+    const adminInfo = await transporter.sendMail(adminMailOptions);
+    console.log('Admin email sent:', adminInfo.messageId);
+    
+    // Send email to student
+    console.log('Sending email to student:', email);
+    const studentInfo = await transporter.sendMail(studentMailOptions);
+    console.log('Student email sent:', studentInfo.messageId);
+    
+    return true;
+  } catch (error) {
+    console.error('Detailed email error:', error);
+    throw error;
+  }
 };
 
 // POST - Submit admission form
 router.post('/submit', async (req, res) => {
+  console.log('\n=== NEW FORM SUBMISSION ===');
+  console.log('Request Body:', req.body);
+  console.log('Headers:', req.headers);
+  
   try {
     const { name, email, phone, course, qualification, message } = req.body;
     
     // Validate required fields
     if (!name || !email || !phone || !course || !qualification) {
+      console.log('Validation failed: Missing required fields');
       return res.status(400).json({
         success: false,
         message: 'Please fill all required fields'
@@ -165,6 +210,7 @@ router.post('/submit', async (req, res) => {
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
+      console.log('Validation failed: Invalid email format');
       return res.status(400).json({
         success: false,
         message: 'Please provide a valid email address'
@@ -175,11 +221,14 @@ router.post('/submit', async (req, res) => {
     const phoneRegex = /^[0-9]{10,15}$/;
     const cleanPhone = phone.replace(/[^0-9]/g, '');
     if (!phoneRegex.test(cleanPhone)) {
+      console.log('Validation failed: Invalid phone number');
       return res.status(400).json({
         success: false,
         message: 'Please provide a valid phone number (10-15 digits)'
       });
     }
+    
+    console.log('Validation passed, saving to database...');
     
     // Create new admission record
     const admission = new Admission({
@@ -193,9 +242,11 @@ router.post('/submit', async (req, res) => {
     
     // Save to database
     await admission.save();
+    console.log('Data saved to MongoDB, ID:', admission._id);
     
     // Send email notifications
     try {
+      console.log('Attempting to send emails...');
       await sendAdmissionEmail({
         name,
         email,
@@ -204,6 +255,7 @@ router.post('/submit', async (req, res) => {
         qualification,
         message: message || ''
       });
+      console.log('Emails sent successfully!');
       
       res.status(201).json({
         success: true,
@@ -215,7 +267,7 @@ router.post('/submit', async (req, res) => {
       // Still return success since data is saved in DB
       res.status(201).json({
         success: true,
-        message: 'Application submitted successfully! Our admission counselor will contact you soon.'
+        message: 'Application submitted successfully! Our admission counselor will contact you soon. (Note: Confirmation email could not be sent)'
       });
     }
     
@@ -232,7 +284,7 @@ router.post('/submit', async (req, res) => {
     
     res.status(500).json({
       success: false,
-      message: 'Server error. Please try again later.'
+      message: 'Server error: ' + error.message
     });
   }
 });
@@ -274,6 +326,24 @@ router.get('/:id', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching application'
+    });
+  }
+});
+
+// Test email endpoint
+router.get('/test-email', async (req, res) => {
+  try {
+    const testResult = await testEmailConfig();
+    res.json({
+      success: testResult,
+      message: testResult ? 'Email configuration working' : 'Email configuration failed',
+      emailUser: process.env.EMAIL_USER ? 'Set' : 'Not set',
+      emailPass: process.env.EMAIL_PASS ? 'Set' : 'Not set'
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      error: error.message
     });
   }
 });
