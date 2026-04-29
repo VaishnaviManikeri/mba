@@ -1,22 +1,39 @@
 const nodemailer = require('nodemailer');
 
-// Configure email transporter
+// Configure email transporter with better settings
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
-    }
+    },
+    pool: true, // Use pooled connections
+    maxConnections: 5,
+    rateLimit: 5
 });
+
+// Verify transporter configuration on startup
+const verifyTransporter = async () => {
+    try {
+        await transporter.verify();
+        console.log('✅ Email service is ready to send emails');
+        return true;
+    } catch (error) {
+        console.error('❌ Email service configuration error:', error.message);
+        return false;
+    }
+};
 
 // Send email to admin
 const sendAdminNotification = async (admissionData) => {
     const adminEmail = process.env.ADMIN_EMAIL || 'vaishnavimanikeri@gmail.com';
     
+    console.log(`📧 Attempting to send admin notification to: ${adminEmail}`);
+    
     const mailOptions = {
-        from: process.env.EMAIL_USER,
+        from: `"AIMS Admissions" <${process.env.EMAIL_USER}>`,
         to: adminEmail,
-        subject: `New Admission Application - ${admissionData.name}`,
+        subject: `🎓 New Admission Application - ${admissionData.name}`,
         html: `
             <!DOCTYPE html>
             <html>
@@ -31,7 +48,6 @@ const sendAdminNotification = async (admissionData) => {
                     .value { color: #374151; margin-top: 5px; }
                     .status { display: inline-block; background: #fef3c7; color: #92400e; padding: 5px 10px; border-radius: 5px; font-size: 12px; font-weight: bold; }
                     .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #6b7280; }
-                    button { background: #0a2a66; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
                 </style>
             </head>
             <body>
@@ -102,7 +118,7 @@ const sendAdminNotification = async (admissionData) => {
                         </ul>
                         
                         <div style="text-align: center; margin-top: 20px;">
-                            <a href="${process.env.ADMIN_PANEL_URL || 'https://your-admin-panel.com'}" style="background: #0a2a66; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Go to Admin Panel</a>
+                            <a href="${process.env.ADMIN_PANEL_URL || 'https://adityainstitutemanagement.com/admin/dashboard'}" style="background: #0a2a66; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Go to Admin Panel</a>
                         </div>
                     </div>
                     <div class="footer">
@@ -116,19 +132,23 @@ const sendAdminNotification = async (admissionData) => {
     };
     
     try {
-        await transporter.sendMail(mailOptions);
-        console.log('Admin notification email sent successfully');
+        const info = await transporter.sendMail(mailOptions);
+        console.log('✅ Admin notification email sent successfully to:', adminEmail);
+        console.log('📧 Message ID:', info.messageId);
         return true;
     } catch (error) {
-        console.error('Error sending admin email:', error);
+        console.error('❌ Error sending admin email:', error.message);
+        console.error('Full error:', error);
         return false;
     }
 };
 
 // Send thank you email to student
 const sendStudentThankYou = async (admissionData) => {
+    console.log(`📧 Attempting to send thank you email to student: ${admissionData.email}`);
+    
     const mailOptions = {
-        from: process.env.EMAIL_USER,
+        from: `"AIMS Admissions" <${process.env.EMAIL_USER}>`,
         to: admissionData.email,
         subject: '🎓 Thank You for Applying to AIMS Bhubaneswar!',
         html: `
@@ -219,16 +239,38 @@ const sendStudentThankYou = async (admissionData) => {
     };
     
     try {
-        await transporter.sendMail(mailOptions);
-        console.log('Thank you email sent to student successfully');
+        const info = await transporter.sendMail(mailOptions);
+        console.log('✅ Thank you email sent to student successfully to:', admissionData.email);
+        console.log('📧 Message ID:', info.messageId);
         return true;
     } catch (error) {
-        console.error('Error sending student email:', error);
+        console.error('❌ Error sending student email:', error.message);
+        console.error('Full error:', error);
+        return false;
+    }
+};
+
+// Test email function
+const sendTestEmail = async () => {
+    try {
+        const testResult = await transporter.sendMail({
+            from: `"AIMS Test" <${process.env.EMAIL_USER}>`,
+            to: process.env.ADMIN_EMAIL,
+            subject: 'Test Email from AIMS Admission System',
+            text: 'This is a test email to verify email configuration is working correctly.',
+            html: '<h1>Test Email</h1><p>If you receive this, email configuration is working!</p>'
+        });
+        console.log('✅ Test email sent successfully');
+        return true;
+    } catch (error) {
+        console.error('❌ Test email failed:', error.message);
         return false;
     }
 };
 
 module.exports = {
     sendAdminNotification,
-    sendStudentThankYou
+    sendStudentThankYou,
+    verifyTransporter,
+    sendTestEmail
 };
