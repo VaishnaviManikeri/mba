@@ -35,5 +35,8 @@ const admissionSchema = new mongoose.Schema({
   }
 });
 
-// Create collection dynamically (MongoDB will create it automatically on first insert)
+// Add index for faster queries
+admissionSchema.index({ emailAddress: 1 });
+admissionSchema.index({ submittedAt: -1 });
+
 module.exports = mongoose.model('Admission', admissionSchema);
