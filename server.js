@@ -49,6 +49,8 @@ app.get('/api/status', (req, res) => {
 });
 
 // Routes
+// Add this with other route imports
+app.use('/api/admissions', require('./routes/admissions'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/gallery', require('./routes/gallery'));
 app.use('/api/announcements', require('./routes/announcements'));
