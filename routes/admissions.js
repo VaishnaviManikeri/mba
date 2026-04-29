@@ -4,165 +4,127 @@ const Admission = require('../models/Admission');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-// Email configuration
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-});
+// Create email transporter once (not per request)
+let transporter = null;
 
-// Helper function to send email
-async function sendAdmissionEmail(admissionData) {
+// Initialize email transporter
+const initEmailTransporter = () => {
+  if (!transporter && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      },
+      // Increase timeout and add pool for better performance
+      pool: true,
+      maxConnections: 1,
+      maxMessages: 100,
+      rateDelta: 1000,
+      rateLimit: 5
+    });
+    
+    // Verify connection
+    transporter.verify((error, success) => {
+      if (error) {
+        console.error('Email transporter error:', error);
+      } else {
+        console.log('Email server is ready to send messages');
+      }
+    });
+  }
+  return transporter;
+};
+
+// Send email asynchronously without blocking response
+const sendEmailsAsync = async (admissionData) => {
   const { name, mobileNumber, emailAddress, course, submittedAt } = admissionData;
   
-  // Email to admin
+  if (!initEmailTransporter()) {
+    console.error('Email transporter not initialized');
+    return;
+  }
+  
+  // Simple email template without heavy HTML (faster)
+  const adminEmailText = `
+New Admission Enquiry
+
+Student Name: ${name}
+Mobile Number: ${mobileNumber}
+Email: ${emailAddress}
+Course: ${course}
+Submitted At: ${new Date(submittedAt).toLocaleString()}
+
+Action Required: Please contact the student within 24 hours.
+  `;
+  
+  const studentEmailText = `
+Thank you for your admission enquiry - AIMS Bhubaneswar
+
+Dear ${name},
+
+Thank you for submitting your admission enquiry for ${course} program at Aditya Institute of Management Studies (AIMS), Bhubaneswar.
+
+We have received your details and our admission counselor will contact you within 24-48 hours.
+
+Best regards,
+Admission Office
+AIMS Bhubaneswar
+  `;
+  
   const adminMailOptions = {
-    from: process.env.EMAIL_USER,
+    from: `"AIMS Admission" <${process.env.EMAIL_USER}>`,
     to: 'vaishnavimanikeri@gmail.com',
-    subject: `New Admission Enquiry - ${course} Application from ${name}`,
-    html: `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #0a2a66, #1e3a8a); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
-          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-          .field { margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-          .label { font-weight: bold; color: #0a2a66; display: inline-block; width: 120px; }
-          .value { color: #333; }
-          .footer { margin-top: 20px; text-align: center; font-size: 12px; color: #666; }
-          .badge { background: #10b981; color: white; padding: 5px 10px; border-radius: 5px; font-size: 12px; display: inline-block; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h2>🎓 New Admission Enquiry</h2>
-            <p>Application Received</p>
-          </div>
-          <div class="content">
-            <div class="field">
-              <span class="label">Student Name:</span>
-              <span class="value">${name}</span>
-            </div>
-            <div class="field">
-              <span class="label">Mobile Number:</span>
-              <span class="value">${mobileNumber}</span>
-            </div>
-            <div class="field">
-              <span class="label">Email Address:</span>
-              <span class="value">${emailAddress}</span>
-            </div>
-            <div class="field">
-              <span class="label">Course Applied:</span>
-              <span class="value"><span class="badge">${course}</span></span>
-            </div>
-            <div class="field">
-              <span class="label">Submitted At:</span>
-              <span class="value">${new Date(submittedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</span>
-            </div>
-            <p style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #eee;">
-              <strong>Action Required:</strong> Please contact the student within 24 hours.
-            </p>
-          </div>
-          <div class="footer">
-            <p>This is an automated message from AIMS Admission System</p>
-            <p>© ${new Date().getFullYear()} AIMS Bhubaneswar</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `
+    subject: `New Admission Enquiry - ${course} - ${name}`,
+    text: adminEmailText
   };
   
-  // Auto-reply to student
   const studentMailOptions = {
-    from: process.env.EMAIL_USER,
+    from: `"AIMS Admission" <${process.env.EMAIL_USER}>`,
     to: emailAddress,
     subject: `Thank you for your admission enquiry - AIMS Bhubaneswar`,
-    html: `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #0a2a66, #1e3a8a); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
-          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-          .button { display: inline-block; background: #0a2a66; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin-top: 20px; }
-          .footer { margin-top: 20px; text-align: center; font-size: 12px; color: #666; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h2>🎉 Thank You for Your Interest!</h2>
-            <p>Admission Enquiry Received</p>
-          </div>
-          <div class="content">
-            <p>Dear <strong>${name}</strong>,</p>
-            <p>Thank you for submitting your admission enquiry for <strong>${course}</strong> program at <strong>Aditya Institute of Management Studies (AIMS), Bhubaneswar</strong>.</p>
-            <p>We have received your details and our admission counselor will contact you within 24-48 hours to guide you through:</p>
-            <ul>
-              <li>Admission process and deadlines</li>
-              <li>Course curriculum and specializations</li>
-              <li>Fee structure and scholarship opportunities</li>
-              <li>Campus tour and counseling sessions</li>
-            </ul>
-            <p>For immediate assistance, please call us at: <strong>+91-XXXXXXXXXX</strong></p>
-            <a href="https://adityainstitutemanagement.com" class="button">Visit Our Website</a>
-            <p style="margin-top: 20px;">Best regards,<br>
-            <strong>Admission Office</strong><br>
-            AIMS Bhubaneswar</p>
-          </div>
-          <div class="footer">
-            <p>This is an automated confirmation email. Please do not reply directly to this message.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `
+    text: studentEmailText
   };
   
   try {
-    // Send email to admin
-    await transporter.sendMail(adminMailOptions);
-    console.log('Admin email sent successfully');
-    
-    // Send auto-reply to student
-    await transporter.sendMail(studentMailOptions);
-    console.log('Student auto-reply email sent successfully');
-    
-    return { success: true, message: 'Emails sent successfully' };
+    // Send emails in parallel (faster)
+    await Promise.all([
+      transporter.sendMail(adminMailOptions),
+      transporter.sendMail(studentMailOptions)
+    ]);
+    console.log('Both emails sent successfully for:', emailAddress);
   } catch (error) {
-    console.error('Email sending error:', error);
-    throw error;
+    console.error('Email sending error:', error.message);
   }
-}
+};
 
-// POST - Submit admission form
+// POST - Fast submission endpoint
 router.post('/submit', async (req, res) => {
   try {
     const { name, mobileNumber, emailAddress, course } = req.body;
     
-    // Check if student already submitted
-    const existingSubmission = await Admission.findOne({ 
-      emailAddress: emailAddress.toLowerCase(),
-      status: { $ne: 'enrolled' }
-    });
+    // Quick validation
+    if (!name || !mobileNumber || !emailAddress || !course) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'All fields are required' 
+      });
+    }
+    
+    // Check for duplicate (fast query with lean())
+    const existingSubmission = await Admission.findOne(
+      { emailAddress: emailAddress.toLowerCase() }, 
+      { _id: 1 } // Only get _id for speed
+    ).lean();
     
     if (existingSubmission) {
       return res.status(400).json({ 
         success: false, 
-        message: 'You have already submitted an admission enquiry. Our counselor will contact you soon.' 
+        message: 'You have already submitted an admission enquiry.' 
       });
     }
     
-    // Create new admission record
+    // Create and save in one step
     const admission = new Admission({
       name: name.trim(),
       mobileNumber,
@@ -170,18 +132,10 @@ router.post('/submit', async (req, res) => {
       course
     });
     
-    // Save to database (MongoDB will automatically create the collection if it doesn't exist)
+    // Save to database (this is the main operation)
     await admission.save();
-    console.log('Admission saved to database:', admission);
     
-    // Send email notifications
-    try {
-      await sendAdmissionEmail(admission);
-    } catch (emailError) {
-      console.error('Failed to send email:', emailError);
-      // Don't fail the request if email fails, just log it
-    }
-    
+    // Send response immediately (don't wait for emails)
     res.status(201).json({
       success: true,
       message: 'Admission form submitted successfully! We will contact you shortly.',
@@ -193,33 +147,47 @@ router.post('/submit', async (req, res) => {
       }
     });
     
+    // Send emails in background (doesn't block response)
+    sendEmailsAsync(admission).catch(err => {
+      console.error('Background email sending failed:', err);
+    });
+    
   } catch (error) {
     console.error('Submission error:', error);
     
-    // Handle validation errors
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(e => e.message);
       return res.status(400).json({ 
         success: false, 
-        message: 'Validation error', 
-        errors 
+        message: errors[0] || 'Validation error'
       });
     }
     
     res.status(500).json({ 
       success: false, 
-      message: 'Internal server error. Please try again later.' 
+      message: 'Server error. Please try again.' 
     });
   }
 });
 
-// GET - Fetch all admissions (for admin dashboard)
+// GET - Fetch all admissions (with pagination for speed)
 router.get('/all', async (req, res) => {
   try {
-    const admissions = await Admission.find().sort({ submittedAt: -1 });
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+    
+    const [admissions, total] = await Promise.all([
+      Admission.find().sort({ submittedAt: -1 }).skip(skip).limit(limit).lean(),
+      Admission.countDocuments()
+    ]);
+    
     res.json({
       success: true,
       count: admissions.length,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
       data: admissions
     });
   } catch (error) {
@@ -231,10 +199,10 @@ router.get('/all', async (req, res) => {
   }
 });
 
-// GET - Fetch single admission by ID
+// GET - Single admission
 router.get('/:id', async (req, res) => {
   try {
-    const admission = await Admission.findById(req.params.id);
+    const admission = await Admission.findById(req.params.id).lean();
     if (!admission) {
       return res.status(404).json({ 
         success: false, 
@@ -254,7 +222,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// PUT - Update admission status (for admin)
+// PUT - Update status
 router.put('/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
@@ -285,7 +253,7 @@ router.put('/:id/status', async (req, res) => {
   }
 });
 
-// DELETE - Delete admission (for admin)
+// DELETE - Delete admission
 router.delete('/:id', async (req, res) => {
   try {
     const admission = await Admission.findByIdAndDelete(req.params.id);
@@ -305,6 +273,25 @@ router.delete('/:id', async (req, res) => {
       success: false, 
       message: 'Error deleting admission' 
     });
+  }
+});
+
+// Test email endpoint
+router.post('/test-email', async (req, res) => {
+  try {
+    const testData = {
+      name: 'Test User',
+      mobileNumber: '9999999999',
+      emailAddress: 'test@example.com',
+      course: 'MBA',
+      submittedAt: new Date()
+    };
+    
+    await sendEmailsAsync(testData);
+    res.json({ success: true, message: 'Test email sent' });
+  } catch (error) {
+    console.error('Test email error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
