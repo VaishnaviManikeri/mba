@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const nodemailer = require('nodemailer'); // Add this
 
 dotenv.config();
 
@@ -21,6 +22,25 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json());
+
+// ====================== EMAIL CONFIGURATION ======================
+// Create email transporter
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER, // Your Gmail address
+    pass: process.env.EMAIL_PASS  // Your Gmail app password
+  }
+});
+
+// Verify email configuration
+transporter.verify((error, success) => {
+  if (error) {
+    console.error('Email configuration error:', error);
+  } else {
+    console.log('Email server is ready to send messages');
+  }
+});
 
 // Database connection
 mongoose.connect(process.env.MONGODB_URI)
@@ -49,14 +69,12 @@ app.get('/api/status', (req, res) => {
 });
 
 // Routes
-// Add this with other route imports
 app.use('/api/admissions', require('./routes/admissions'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/gallery', require('./routes/gallery'));
 app.use('/api/announcements', require('./routes/announcements'));
 app.use('/api/notices', require('./routes/notices'));
 app.use('/api/careers', require('./routes/careers'));
-// Add logging middleware for blog routes
 app.use('/api/blogs', (req, res, next) => {
     console.log(`${req.method} ${req.url} - Blog route accessed`);
     next();
@@ -64,7 +82,5 @@ app.use('/api/blogs', (req, res, next) => {
 app.use('/api/blogs', require('./routes/blogs'));
 app.use('/api/admin', require('./routes/admin'));
 
-// ====================== PORT CHANGED ======================
 const PORT = 5018;
-
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
