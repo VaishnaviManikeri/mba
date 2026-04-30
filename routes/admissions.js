@@ -40,7 +40,7 @@ const sendEmailsAsync = async (admissionData) => {
   
   if (!initEmailTransporter()) {
     console.error('Email transporter not initialized');
-    return { success: false, error: 'Email transporter not initialized' };
+    return;
   }
   
   const adminEmailText = `
@@ -96,76 +96,41 @@ AIMS Bhubaneswar
   }
 };
 
-// POST - Submit admission form (with better error logging)
+// ============= SPECIFIC ROUTES FIRST (before dynamic routes) =============
+
+// POST - Submit admission form
 router.post('/submit', async (req, res) => {
   try {
-    console.log('Received request body:', req.body);
-    console.log('Content-Type:', req.headers['content-type']);
-    
-    // Extract data from either JSON or form-urlencoded
     const { name, mobileNumber, emailAddress, course } = req.body;
     
-    // Detailed validation with specific error messages
-    const errors = [];
-    
-    if (!name) {
-      errors.push('Name is required');
-    } else if (name.trim().length < 2) {
-      errors.push('Name must be at least 2 characters');
-    }
-    
-    if (!mobileNumber) {
-      errors.push('Mobile number is required');
-    } else if (!/^[0-9]{10}$/.test(mobileNumber)) {
-      errors.push('Please enter a valid 10-digit mobile number');
-    }
-    
-    if (!emailAddress) {
-      errors.push('Email address is required');
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddress)) {
-      errors.push('Please enter a valid email address');
-    }
-    
-    if (!course) {
-      errors.push('Course is required');
-    } else if (!['MBA', 'MCA'].includes(course)) {
-      errors.push('Course must be either MBA or MCA');
-    }
-    
-    // If there are validation errors, return them
-    if (errors.length > 0) {
+    if (!name || !mobileNumber || !emailAddress || !course) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Validation failed',
-        errors: errors
+        message: 'All fields are required' 
       });
     }
     
-    // Check for duplicate submission
-    const existingSubmission = await Admission.findOne({ 
-      emailAddress: emailAddress.toLowerCase().trim()
-    });
+    const existingSubmission = await Admission.findOne(
+      { emailAddress: emailAddress.toLowerCase() }, 
+      { _id: 1 }
+    ).lean();
     
     if (existingSubmission) {
       return res.status(400).json({ 
         success: false, 
-        message: 'You have already submitted an admission enquiry. Our counselor will contact you soon.' 
+        message: 'You have already submitted an admission enquiry.' 
       });
     }
     
-    // Create new admission record
     const admission = new Admission({
       name: name.trim(),
-      mobileNumber: mobileNumber.trim(),
-      emailAddress: emailAddress.toLowerCase().trim(),
-      course: course
+      mobileNumber,
+      emailAddress: emailAddress.toLowerCase(),
+      course
     });
     
-    // Save to database
     await admission.save();
-    console.log('Admission saved successfully:', admission._id);
     
-    // Send success response immediately
     res.status(201).json({
       success: true,
       message: 'Admission form submitted successfully! We will contact you shortly.',
@@ -177,45 +142,35 @@ router.post('/submit', async (req, res) => {
       }
     });
     
-    // Send emails in background (don't await)
+    // Send emails in background
     sendEmailsAsync(admission).catch(err => {
       console.error('Background email sending failed:', err);
     });
     
   } catch (error) {
-    console.error('Submission error details:', error);
+    console.error('Submission error:', error);
     
-    // Handle MongoDB validation errors
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(e => e.message);
       return res.status(400).json({ 
         success: false, 
-        message: 'Validation error', 
-        errors: errors 
-      });
-    }
-    
-    // Handle duplicate key error
-    if (error.code === 11000) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'This email has already been submitted' 
+        message: errors[0] || 'Validation error'
       });
     }
     
     res.status(500).json({ 
       success: false, 
-      message: 'Internal server error. Please try again later.',
-      error: error.message 
+      message: 'Server error. Please try again.' 
     });
   }
 });
 
-// GET - Test email endpoint
+// GET - Test email endpoint (MUST be before /:id route)
 router.get('/test-email', async (req, res) => {
   try {
     console.log('Test email endpoint called');
     
+    // Check if email is configured
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       return res.status(400).json({ 
         success: false, 
@@ -258,7 +213,7 @@ router.get('/test-email', async (req, res) => {
   }
 });
 
-// GET - Fetch all admissions
+// GET - Fetch all admissions (with pagination)
 router.get('/all', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -287,6 +242,8 @@ router.get('/all', async (req, res) => {
   }
 });
 
+// ============= DYNAMIC ROUTES (with :id) GO LAST =============
+
 // GET - Single admission by ID
 router.get('/:id', async (req, res) => {
   try {
@@ -310,7 +267,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// PUT - Update admission status
+// PUT - Update status
 router.put('/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
@@ -362,17 +319,6 @@ router.delete('/:id', async (req, res) => {
       message: 'Error deleting admission' 
     });
   }
-});
-
-// Debug endpoint to check configuration
-router.get('/debug/config', (req, res) => {
-  res.json({
-    emailUser: process.env.EMAIL_USER ? 'set (' + process.env.EMAIL_USER + ')' : 'not set',
-    emailPass: process.env.EMAIL_PASS ? 'set' : 'not set',
-    mongodbUri: process.env.MONGODB_URI ? 'set' : 'not set',
-    port: process.env.PORT || 5018,
-    nodeEnv: process.env.NODE_ENV || 'development'
-  });
 });
 
 module.exports = router;
