@@ -19,10 +19,9 @@ const corsOptions = {
   credentials: true
 };
 
-// Make sure these lines are present and in this order
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '10mb' })); // This enables JSON parsing
-app.use(express.urlencoded({ extended: true })); // This enables form-urlencoded parsing
+app.use(express.json({ limit: '10mb' })); // Increased limit
+app.use(express.urlencoded({ extended: true }));
 
 // Database connection with optimized settings
 mongoose.connect(process.env.MONGODB_URI, {
