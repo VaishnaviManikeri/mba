@@ -4,7 +4,7 @@ const Admission = require('../models/Admission');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-// Create email transporter once (not per request)
+// Create email transporter
 let transporter = null;
 
 // Initialize email transporter
@@ -34,75 +34,84 @@ const initEmailTransporter = () => {
   return transporter;
 };
 
-// Send email asynchronously without blocking response
-const sendEmailsAsync = async (admissionData) => {
+// Function to send emails (synchronous for reliability)
+const sendEmails = async (admissionData) => {
   const { name, mobileNumber, emailAddress, course, submittedAt } = admissionData;
   
-  if (!initEmailTransporter()) {
-    console.error('Email transporter not initialized');
-    return;
+  const transporter = initEmailTransporter();
+  if (!transporter) {
+    console.error('Email transporter not initialized - check EMAIL_USER and EMAIL_PASS in .env');
+    throw new Error('Email service not configured');
   }
   
-  const adminEmailText = `
-New Admission Enquiry
-
-Student Name: ${name}
-Mobile Number: ${mobileNumber}
-Email: ${emailAddress}
-Course: ${course}
-Submitted At: ${new Date(submittedAt).toLocaleString()}
-
-Action Required: Please contact the student within 24 hours.
-  `;
-  
-  const studentEmailText = `
-Thank you for your admission enquiry - AIMS Bhubaneswar
-
-Dear ${name},
-
-Thank you for submitting your admission enquiry for ${course} program at Aditya Institute of Management Studies (AIMS), Bhubaneswar.
-
-We have received your details and our admission counselor will contact you within 24-48 hours.
-
-Best regards,
-Admission Office
-AIMS Bhubaneswar
+  // Admin email content
+  const adminEmailHtml = `
+    <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px;">
+      <h2 style="color: #0a2a66;">New Admission Enquiry</h2>
+      <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 15px 0;">
+        <p><strong>Student Name:</strong> ${name}</p>
+        <p><strong>Mobile Number:</strong> ${mobileNumber}</p>
+        <p><strong>Email:</strong> ${emailAddress}</p>
+        <p><strong>Course:</strong> ${course}</p>
+        <p><strong>Submitted At:</strong> ${new Date(submittedAt).toLocaleString()}</p>
+      </div>
+      <p style="color: #666;">Action Required: Please contact the student within 24 hours.</p>
+    </div>
   `;
   
   const adminMailOptions = {
     from: `"AIMS Admission" <${process.env.EMAIL_USER}>`,
     to: 'vaishnavimanikeri@gmail.com',
     subject: `New Admission Enquiry - ${course} - ${name}`,
-    text: adminEmailText
+    html: adminEmailHtml,
+    text: `New Admission Enquiry\n\nStudent Name: ${name}\nMobile Number: ${mobileNumber}\nEmail: ${emailAddress}\nCourse: ${course}\nSubmitted At: ${new Date(submittedAt).toLocaleString()}\n\nAction Required: Please contact the student within 24 hours.`
   };
+  
+  // Student auto-reply email content
+  const studentEmailHtml = `
+    <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px;">
+      <h2 style="color: #0a2a66;">Thank You for Your Admission Enquiry</h2>
+      <p>Dear ${name},</p>
+      <p>Thank you for submitting your admission enquiry for <strong>${course}</strong> program at <strong>Aditya Institute of Management Studies (AIMS)</strong>, Bhubaneswar.</p>
+      <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 15px 0;">
+        <p>We have received your details and our admission counselor will contact you within <strong>24-48 hours</strong>.</p>
+      </div>
+      <p>In the meantime, if you have any immediate questions, please feel free to reach out to us.</p>
+      <br/>
+      <p>Best regards,<br/>
+      <strong>Admission Office</strong><br/>
+      AIMS Bhubaneswar</p>
+      <hr/>
+      <p style="font-size: 12px; color: #999;">This is an automated confirmation. Please do not reply to this email.</p>
+    </div>
+  `;
   
   const studentMailOptions = {
     from: `"AIMS Admission" <${process.env.EMAIL_USER}>`,
     to: emailAddress,
     subject: `Thank you for your admission enquiry - AIMS Bhubaneswar`,
-    text: studentEmailText
+    html: studentEmailHtml,
+    text: `Thank You for Your Admission Enquiry\n\nDear ${name},\n\nThank you for submitting your admission enquiry for ${course} program at Aditya Institute of Management Studies (AIMS), Bhubaneswar.\n\nWe have received your details and our admission counselor will contact you within 24-48 hours.\n\nBest regards,\nAdmission Office\nAIMS Bhubaneswar`
   };
   
-  try {
-    await Promise.all([
-      transporter.sendMail(adminMailOptions),
-      transporter.sendMail(studentMailOptions)
-    ]);
-    console.log('Both emails sent successfully for:', emailAddress);
-    return { success: true };
-  } catch (error) {
-    console.error('Email sending error:', error.message);
-    return { success: false, error: error.message };
-  }
+  // Send both emails
+  await transporter.sendMail(adminMailOptions);
+  console.log(`Admin email sent to vaishnavimanikeri@gmail.com for ${emailAddress}`);
+  
+  await transporter.sendMail(studentMailOptions);
+  console.log(`Auto-reply email sent to ${emailAddress}`);
+  
+  return { success: true };
 };
 
-// ============= SPECIFIC ROUTES FIRST (before dynamic routes) =============
+// ============= ROUTES =============
 
 // POST - Submit admission form
 router.post('/submit', async (req, res) => {
   try {
     const { name, mobileNumber, emailAddress, course } = req.body;
     
+    // Validate required fields
     if (!name || !mobileNumber || !emailAddress || !course) {
       return res.status(400).json({ 
         success: false, 
@@ -110,6 +119,7 @@ router.post('/submit', async (req, res) => {
       });
     }
     
+    // Check for duplicate email
     const existingSubmission = await Admission.findOne(
       { emailAddress: emailAddress.toLowerCase() }, 
       { _id: 1 }
@@ -122,6 +132,7 @@ router.post('/submit', async (req, res) => {
       });
     }
     
+    // Create new admission record
     const admission = new Admission({
       name: name.trim(),
       mobileNumber,
@@ -130,22 +141,37 @@ router.post('/submit', async (req, res) => {
     });
     
     await admission.save();
+    console.log(`Admission saved: ${admission._id} for ${emailAddress}`);
     
-    res.status(201).json({
-      success: true,
-      message: 'Admission form submitted successfully! We will contact you shortly.',
-      data: {
-        id: admission._id,
-        name: admission.name,
-        course: admission.course,
-        submittedAt: admission.submittedAt
-      }
-    });
-    
-    // Send emails in background
-    sendEmailsAsync(admission).catch(err => {
-      console.error('Background email sending failed:', err);
-    });
+    // Send emails (wait for completion)
+    try {
+      await sendEmails(admission);
+      console.log('Emails sent successfully');
+      
+      res.status(201).json({
+        success: true,
+        message: 'Admission form submitted successfully! You will receive a confirmation email shortly.',
+        data: {
+          id: admission._id,
+          name: admission.name,
+          course: admission.course,
+          submittedAt: admission.submittedAt
+        }
+      });
+    } catch (emailError) {
+      console.error('Email sending error:', emailError);
+      // Still return success but inform about email delay
+      res.status(201).json({
+        success: true,
+        message: 'Admission form submitted successfully! However, there was a slight delay in sending the confirmation email. Our team will contact you soon.',
+        data: {
+          id: admission._id,
+          name: admission.name,
+          course: admission.course,
+          submittedAt: admission.submittedAt
+        }
+      });
+    }
     
   } catch (error) {
     console.error('Submission error:', error);
@@ -165,7 +191,7 @@ router.post('/submit', async (req, res) => {
   }
 });
 
-// GET - Test email endpoint (MUST be before /:id route)
+// GET - Test email endpoint
 router.get('/test-email', async (req, res) => {
   try {
     console.log('Test email endpoint called');
@@ -190,20 +216,13 @@ router.get('/test-email', async (req, res) => {
       submittedAt: new Date()
     };
     
-    const result = await sendEmailsAsync(testData);
+    await sendEmails(testData);
     
-    if (result && result.success) {
-      res.json({ 
-        success: true, 
-        message: 'Test email sent successfully to vaishnavimanikeri@gmail.com! Please check your inbox.' 
-      });
-    } else {
-      res.status(500).json({ 
-        success: false, 
-        message: 'Failed to send test email. Check server logs for details.',
-        error: result?.error || 'Unknown error'
-      });
-    }
+    res.json({ 
+      success: true, 
+      message: 'Test email sent successfully to vaishnavimanikeri@gmail.com! Please check your inbox.' 
+    });
+    
   } catch (error) {
     console.error('Test email error:', error);
     res.status(500).json({ 
@@ -241,8 +260,6 @@ router.get('/all', async (req, res) => {
     });
   }
 });
-
-// ============= DYNAMIC ROUTES (with :id) GO LAST =============
 
 // GET - Single admission by ID
 router.get('/:id', async (req, res) => {
