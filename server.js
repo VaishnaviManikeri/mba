@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const nodemailer = require('nodemailer');
 
 dotenv.config();
 
@@ -34,6 +35,163 @@ mongoose.connect(process.env.MONGODB_URI, {
 .then(() => console.log('MongoDB connected'))
 .catch(err => console.log('MongoDB connection error:', err));
 
+// ====================== EMAIL CONFIGURATION ======================
+// Email transporter setup
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER, // Your Gmail address
+    pass: process.env.EMAIL_PASS  // Your Gmail App Password
+  }
+});
+
+// Auto-reply email template for user
+const getAutoReplyEmail = (userName, course) => {
+  return {
+    subject: `Thank you for your enquiry - ${course} Program`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #4CAF50;">Thank You for Your Interest!</h2>
+        <p>Dear ${userName},</p>
+        <p>Thank you for your enquiry about the ${course} program. We have received your admission form and one of our counselors will get back to you within 24 hours.</p>
+        
+        <div style="background-color: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="margin-top: 0;">Next Steps:</h3>
+          <ul>
+            <li>Our admission counselor will contact you shortly</li>
+            <li>You'll receive detailed information about the program</li>
+            <li>We'll guide you through the admission process</li>
+          </ul>
+        </div>
+        
+        <p>In the meantime, if you have any urgent questions, feel free to call us at your convenience.</p>
+        
+        <p>Best regards,<br>
+        <strong>Admissions Team</strong><br>
+        Aditya Institute of Management</p>
+        
+        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+        <p style="color: #666; font-size: 12px;">This is an automated response. Please do not reply to this email.</p>
+      </div>
+    `
+  };
+};
+
+// Admin notification email template
+const getAdminNotificationEmail = (formData) => {
+  return {
+    subject: `New Admission Enquiry - ${formData.course}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #4CAF50;">New Admission Form Submission</h2>
+        
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <th style="background-color: #f5f5f5; padding: 10px; text-align: left; border: 1px solid #ddd;">Field</th>
+            <th style="background-color: #f5f5f5; padding: 10px; text-align: left; border: 1px solid #ddd;">Value</th>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Name</strong></td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${formData.name}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Mobile Number</strong></td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${formData.mobile}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Email</strong></td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${formData.email}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Selected Course</strong></td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${formData.course}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Message/Enquiry</strong></td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${formData.message || 'No message provided'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Submission Time</strong></td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</td>
+          </tr>
+        </table>
+        
+        <p style="margin-top: 20px;">Please follow up with this candidate at the earliest.</p>
+      </div>
+    `
+  };
+};
+
+// ====================== ADMISSION FORM API ======================
+// API endpoint to handle admission form submission
+app.post('/api/submit-admission', async (req, res) => {
+  const { name, mobile, email, course, message } = req.body;
+
+  // Validation
+  const errors = {};
+  
+  if (!name || name.trim().length < 2) {
+    errors.name = 'Valid name is required';
+  }
+  
+  const mobileRegex = /^[6-9]\d{9}$/;
+  if (!mobile || !mobileRegex.test(mobile)) {
+    errors.mobile = 'Valid 10-digit mobile number is required';
+  }
+  
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email || !emailRegex.test(email)) {
+    errors.email = 'Valid email address is required';
+  }
+  
+  if (!course || !['MBA', 'MCA'].includes(course)) {
+    errors.course = 'Please select a valid course';
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Validation failed', 
+      errors 
+    });
+  }
+
+  try {
+    // Send email to admin (vaishnavimanikeri@gmail.com)
+    await transporter.sendMail({
+      from: `"Admission Form" <${process.env.EMAIL_USER}>`,
+      to: 'vaishnavimanikeri@gmail.com',
+      subject: getAdminNotificationEmail(req.body).subject,
+      html: getAdminNotificationEmail(req.body).html
+    });
+
+    // Send auto-reply to user
+    await transporter.sendMail({
+      from: `"Admissions Office" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: getAutoReplyEmail(name, course).subject,
+      html: getAutoReplyEmail(name, course).html
+    });
+
+    console.log('✅ Admission form emails sent successfully for:', email);
+    
+    // Optional: Save to database if you want to store admission enquiries
+    // You can create an Admission model and save here
+    
+    res.status(200).json({
+      success: true,
+      message: 'Form submitted successfully. Check your email for confirmation.'
+    });
+
+  } catch (error) {
+    console.error('❌ Email sending error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send email. Please try again later.'
+    });
+  }
+});
+
 // ====================== STATUS API ======================
 app.get('/', (req, res) => {
   res.json({
@@ -63,7 +221,6 @@ app.use('/api/notices', require('./routes/notices'));
 app.use('/api/careers', require('./routes/careers'));
 app.use('/api/blogs', require('./routes/blogs'));
 app.use('/api/admin', require('./routes/admin'));
-app.use('/api/admissions', require('./routes/admissions')); // Add this line
 
 // Error handling middleware
 app.use((err, req, res, next) => {
