@@ -21,29 +21,43 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '10mb' })); // Increased limit
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Database connection with optimized settings
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-  maxPoolSize: 10, // Connection pool
+  maxPoolSize: 10,
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
 })
 .then(() => console.log('MongoDB connected'))
 .catch(err => console.log('MongoDB connection error:', err));
 
-// ====================== EMAIL CONFIGURATION ======================
-// Email transporter setup
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER, // Your Gmail address
-    pass: process.env.EMAIL_PASS  // Your Gmail App Password
-  }
-});
+// ====================== OPTIMIZED EMAIL CONFIGURATION ======================
+// Create email transporter with better timeout settings
+const createTransporter = () => {
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
+    },
+    // Optimized connection settings
+    connectionTimeout: 10000, // 10 seconds
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+    // Pool connections for better performance
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
+    rateDelta: 1000,
+    rateLimit: 5
+  });
+};
+
+let transporter = createTransporter();
 
 // Auto-reply email template for user
 const getAutoReplyEmail = (userName, course) => {
@@ -122,12 +136,31 @@ const getAdminNotificationEmail = (formData) => {
   };
 };
 
+// Function to send email with retry logic
+const sendEmailWithRetry = async (mailOptions, retries = 2) => {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      // Recreate transporter if needed
+      if (!transporter || i > 0) {
+        transporter = createTransporter();
+      }
+      const result = await transporter.sendMail(mailOptions);
+      return result;
+    } catch (error) {
+      console.log(`Email attempt ${i + 1} failed:`, error.message);
+      if (i === retries) throw error;
+      // Wait before retry (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+    }
+  }
+};
+
 // ====================== ADMISSION FORM API ======================
-// API endpoint to handle admission form submission
+// Optimized API endpoint with background email sending
 app.post('/api/submit-admission', async (req, res) => {
   const { name, mobile, email, course, message } = req.body;
 
-  // Validation
+  // Quick validation
   const errors = {};
   
   if (!name || name.trim().length < 2) {
@@ -156,41 +189,56 @@ app.post('/api/submit-admission', async (req, res) => {
     });
   }
 
+  // Send immediate success response to user
+  res.status(200).json({
+    success: true,
+    message: 'Form submitted successfully. We will contact you soon.'
+  });
+
+  // Send emails in background (don't block the response)
+  sendEmailsInBackground({ name, mobile, email, course, message });
+});
+
+// Background function to send emails
+const sendEmailsInBackground = async (formData) => {
   try {
-    // Send email to admin (vaishnavimanikeri@gmail.com)
-    await transporter.sendMail({
+    const { name, email, course } = formData;
+    
+    // Send email to admin
+    await sendEmailWithRetry({
       from: `"Admission Form" <${process.env.EMAIL_USER}>`,
       to: 'vaishnavimanikeri@gmail.com',
-      subject: getAdminNotificationEmail(req.body).subject,
-      html: getAdminNotificationEmail(req.body).html
+      subject: getAdminNotificationEmail(formData).subject,
+      html: getAdminNotificationEmail(formData).html
     });
 
     // Send auto-reply to user
-    await transporter.sendMail({
+    await sendEmailWithRetry({
       from: `"Admissions Office" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: getAutoReplyEmail(name, course).subject,
       html: getAutoReplyEmail(name, course).html
     });
 
-    console.log('✅ Admission form emails sent successfully for:', email);
-    
-    // Optional: Save to database if you want to store admission enquiries
-    // You can create an Admission model and save here
-    
-    res.status(200).json({
-      success: true,
-      message: 'Form submitted successfully. Check your email for confirmation.'
-    });
-
+    console.log('✅ Emails sent successfully for:', email);
   } catch (error) {
-    console.error('❌ Email sending error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to send email. Please try again later.'
-    });
+    console.error('❌ Background email error:', error.message);
+    // Log to file or database for retry later
+    logFailedEmail(formData, error);
   }
-});
+};
+
+// Simple logging for failed emails (optional)
+const logFailedEmail = (formData, error) => {
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    formData,
+    error: error.message,
+    status: 'failed'
+  };
+  console.log('Failed email log:', logEntry);
+  // You can save this to database or file for retry later
+};
 
 // ====================== STATUS API ======================
 app.get('/', (req, res) => {
