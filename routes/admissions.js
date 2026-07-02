@@ -49,9 +49,7 @@ initEmailTransporter();
 const sendAdminEmail = async (admissionData) => {
   const { name, mobileNumber, emailAddress, course, submittedAt, _id } = admissionData;
   
-  // ✅ UPDATED: New admin email address
-  const ADMIN_EMAIL = 'adityainstitute.admission@gmail.com';
-  console.log(`📤 Sending ADMIN email for ${name} to ${ADMIN_EMAIL}`);
+  console.log(`📤 Sending ADMIN email for ${name} to adityainstitute.admission@gmail.com`);
   
   if (!transporter) {
     console.error('❌ Transporter not initialized');
@@ -77,7 +75,7 @@ const sendAdminEmail = async (admissionData) => {
   
   const adminMailOptions = {
     from: `"AIMS Admission System" <${process.env.EMAIL_USER}>`,
-    to: ADMIN_EMAIL,  // ✅ UPDATED: New admin email
+    to: 'adityainstitute.admission@gmail.com',  // Hardcoded admin email
     replyTo: emailAddress,  // So admin can reply directly to student
     subject: `🔔 NEW ADMISSION ENQUIRY - ${course} - ${name}`,
     html: adminEmailHtml,
@@ -247,11 +245,10 @@ router.post('/submit', async (req, res) => {
   }
 });
 
-// GET - Test email endpoint (updated with new admin email)
+// GET - Test email endpoint (specifically for admin email)
 router.get('/test-admin-email', async (req, res) => {
   try {
-    const ADMIN_EMAIL = 'adityainstitute.admission@gmail.com';
-    console.log(`📧 Testing admin email to ${ADMIN_EMAIL}`);
+    console.log('📧 Testing admin email to adityainstitute.admission@gmail.com');
     
     if (!transporter) {
       initEmailTransporter();
@@ -276,7 +273,7 @@ router.get('/test-admin-email', async (req, res) => {
     
     res.json({ 
       success: true, 
-      message: `✅ Test email sent successfully to ${ADMIN_EMAIL}!`,
+      message: '✅ Test email sent successfully to adityainstitute.admission@gmail.com!',
       messageId: result.messageId,
       note: 'Please check your inbox and spam folder'
     });
@@ -306,7 +303,7 @@ router.get('/email-status', (req, res) => {
     emailConfigured: isConfigured,
     transporterReady: !!transporter,
     emailUser: process.env.EMAIL_USER ? process.env.EMAIL_USER : null,
-    adminEmail: 'adityainstitute.admission@gmail.com', // ✅ UPDATED
+    adminEmail: 'adityainstitute.admission@gmail.com',
     message: isConfigured && transporter ? '✅ Email is configured and ready' : '⚠️ Email configured but transporter not ready',
     tips: [
       'Make sure EMAIL_PASS is using Gmail App Password (not regular password)',
