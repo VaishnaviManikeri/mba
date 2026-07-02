@@ -204,10 +204,13 @@ const sendEmailsInBackground = async (formData) => {
   try {
     const { name, email, course } = formData;
     
+    // ✅ UPDATED: New admin email
+    const ADMIN_EMAIL = 'adityainstitute.admission@gmail.com';
+    
     // Send email to admin
     await sendEmailWithRetry({
       from: `"Admission Form" <${process.env.EMAIL_USER}>`,
-      to: 'vaishnavimanikeri@gmail.com',
+      to: ADMIN_EMAIL,  // ✅ UPDATED: New admin email
       subject: getAdminNotificationEmail(formData).subject,
       html: getAdminNotificationEmail(formData).html
     });

@@ -49,7 +49,9 @@ initEmailTransporter();
 const sendAdminEmail = async (admissionData) => {
   const { name, mobileNumber, emailAddress, course, submittedAt, _id } = admissionData;
   
-  console.log(`📤 Sending ADMIN email for ${name} to vaishnavimanikeri@gmail.com`);
+  // ✅ UPDATED: New admin email address
+  const ADMIN_EMAIL = 'adityainstitute.admission@gmail.com';
+  console.log(`📤 Sending ADMIN email for ${name} to ${ADMIN_EMAIL}`);
   
   if (!transporter) {
     console.error('❌ Transporter not initialized');
@@ -75,7 +77,7 @@ const sendAdminEmail = async (admissionData) => {
   
   const adminMailOptions = {
     from: `"AIMS Admission System" <${process.env.EMAIL_USER}>`,
-    to: 'vaishnavimanikeri@gmail.com',  // Hardcoded admin email
+    to: ADMIN_EMAIL,  // ✅ UPDATED: New admin email
     replyTo: emailAddress,  // So admin can reply directly to student
     subject: `🔔 NEW ADMISSION ENQUIRY - ${course} - ${name}`,
     html: adminEmailHtml,
@@ -172,11 +174,11 @@ router.post('/submit', async (req, res) => {
     let studentEmailSent = false;
     let emailErrors = [];
     
-    // Send ADMIN email first (to vaishnavimanikeri@gmail.com)
+    // Send ADMIN email first (to adityainstitute.admission@gmail.com)
     try {
       await sendAdminEmail(admission);
       adminEmailSent = true;
-      console.log('✅ Admin notification sent to vaishnavimanikeri@gmail.com');
+      console.log('✅ Admin notification sent to adityainstitute.admission@gmail.com');
     } catch (adminError) {
       console.error('❌ Failed to send admin email:', adminError);
       emailErrors.push(`Admin email failed: ${adminError.message}`);
@@ -245,10 +247,11 @@ router.post('/submit', async (req, res) => {
   }
 });
 
-// GET - Test email endpoint (specifically for admin email)
+// GET - Test email endpoint (updated with new admin email)
 router.get('/test-admin-email', async (req, res) => {
   try {
-    console.log('📧 Testing admin email to vaishnavimanikeri@gmail.com');
+    const ADMIN_EMAIL = 'adityainstitute.admission@gmail.com';
+    console.log(`📧 Testing admin email to ${ADMIN_EMAIL}`);
     
     if (!transporter) {
       initEmailTransporter();
@@ -273,7 +276,7 @@ router.get('/test-admin-email', async (req, res) => {
     
     res.json({ 
       success: true, 
-      message: '✅ Test email sent successfully to vaishnavimanikeri@gmail.com!',
+      message: `✅ Test email sent successfully to ${ADMIN_EMAIL}!`,
       messageId: result.messageId,
       note: 'Please check your inbox and spam folder'
     });
@@ -303,7 +306,7 @@ router.get('/email-status', (req, res) => {
     emailConfigured: isConfigured,
     transporterReady: !!transporter,
     emailUser: process.env.EMAIL_USER ? process.env.EMAIL_USER : null,
-    adminEmail: 'vaishnavimanikeri@gmail.com',
+    adminEmail: 'adityainstitute.admission@gmail.com', // ✅ UPDATED
     message: isConfigured && transporter ? '✅ Email is configured and ready' : '⚠️ Email configured but transporter not ready',
     tips: [
       'Make sure EMAIL_PASS is using Gmail App Password (not regular password)',
