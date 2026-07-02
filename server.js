@@ -38,10 +38,9 @@ mongoose.connect(process.env.MONGODB_URI, {
 .catch(err => console.error('❌ MongoDB connection error:', err));
 
 // ====================== EMAIL CONFIGURATION ======================
-// Create email transporter
 const createTransporter = () => {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.error('❌ Email credentials missing in environment variables');
+    console.error('❌ Email credentials missing');
     return null;
   }
   
@@ -53,10 +52,7 @@ const createTransporter = () => {
     },
     pool: true,
     maxConnections: 5,
-    maxMessages: 100,
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000
+    maxMessages: 100
   });
 };
 
@@ -73,7 +69,7 @@ const verifyTransporter = async () => {
       console.log('✅ Email transporter verified successfully');
       return true;
     } catch (error) {
-      console.error('❌ Email transporter verification failed:', error.message);
+      console.error('❌ Email verification failed:', error.message);
       transporter = null;
       return false;
     }
@@ -81,50 +77,37 @@ const verifyTransporter = async () => {
   return false;
 };
 
-// Initial verification
 verifyTransporter();
 
-// Email sending function with retry logic
-const sendEmailWithRetry = async (mailOptions, retries = 3) => {
-  for (let i = 0; i < retries; i++) {
-    try {
-      // Ensure transporter is ready
-      if (!transporter) {
-        transporter = createTransporter();
-        if (!transporter) {
-          throw new Error('Transporter not available');
-        }
-      }
-      
-      const result = await transporter.sendMail(mailOptions);
-      console.log(`✅ Email sent successfully (attempt ${i + 1})`);
-      return result;
-    } catch (error) {
-      console.error(`❌ Email attempt ${i + 1} failed:`, error.message);
-      
-      // Recreate transporter on failure
+// ====================== EMAIL SEND FUNCTION ======================
+const sendEmail = async (mailOptions) => {
+  try {
+    if (!transporter) {
       transporter = createTransporter();
-      
-      if (i === retries - 1) {
-        throw error;
+      if (!transporter) {
+        throw new Error('Transporter not available');
       }
-      
-      // Wait with exponential backoff
-      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, i)));
     }
+    
+    const result = await transporter.sendMail(mailOptions);
+    console.log('✅ Email sent successfully');
+    return result;
+  } catch (error) {
+    console.error('❌ Email send error:', error.message);
+    throw error;
   }
 };
 
-// ====================== ADMISSION FORM API ======================
-// POST - Submit admission form (main endpoint)
+// ====================== ADMISSION FORM SUBMISSION ======================
 app.post('/api/submit-admission', async (req, res) => {
-  const startTime = Date.now();
+  console.log('📝 Step 1: User submits admission form');
   
   try {
     const { name, mobile, email, course, message } = req.body;
-    console.log('📝 Received admission form submission:', { name, mobile, email, course });
+    console.log(`📋 Form Data: Name: ${name}, Mobile: ${mobile}, Email: ${email}, Course: ${course}`);
 
-    // Validate required fields
+    // ========== VALIDATION ==========
+    console.log('🔍 Step 2: Validating form data');
     const errors = {};
     
     if (!name || name.trim().length < 2) {
@@ -146,138 +129,214 @@ app.post('/api/submit-admission', async (req, res) => {
     }
 
     if (Object.keys(errors).length > 0) {
+      console.log('❌ Validation failed:', errors);
       return res.status(400).json({ 
         success: false, 
         message: 'Validation failed', 
         errors 
       });
     }
+    console.log('✅ Validation passed');
 
-    // Import Admission model
+    // ========== SAVE TO DATABASE ==========
+    console.log('💾 Step 3: Saving to database');
     const Admission = require('./models/Admission');
     
-    // Check for duplicate email
-    const existingSubmission = await Admission.findOne(
-      { emailAddress: email.toLowerCase() }
-    );
-    
-    if (existingSubmission) {
+    // Check for duplicate
+    const existing = await Admission.findOne({ emailAddress: email.toLowerCase() });
+    if (existing) {
+      console.log('⚠️ Duplicate submission found for:', email);
       return res.status(400).json({
         success: false,
-        message: 'You have already submitted an admission enquiry. Our team will contact you soon.'
+        message: 'You have already submitted an admission enquiry.'
       });
     }
 
-    // Save to database
     const admission = new Admission({
       name: name.trim(),
       mobileNumber: mobile,
       emailAddress: email.toLowerCase(),
       course,
-      message: message || '',
-      ipAddress: req.ip || req.connection.remoteAddress,
-      userAgent: req.headers['user-agent']
+      message: message || ''
     });
     
     await admission.save();
     console.log(`✅ Admission saved. ID: ${admission._id}`);
 
-    // Send emails in background
+    // ========== SEND EMAILS ==========
+    console.log('📧 Step 4: Sending emails');
+    
     const adminEmail = 'adityainstitute.admission@gmail.com';
-    let emailResults = {
-      admin: false,
-      student: false,
-      errors: []
-    };
+    let adminEmailSent = false;
+    let studentEmailSent = false;
+    const emailErrors = [];
 
-    // Send admin email
+    // 4a: Send to Admin
     try {
+      console.log(`📤 Sending admin email to: ${adminEmail}`);
+      
       const adminMailOptions = {
         from: `"AIMS Admission System" <${process.env.EMAIL_USER}>`,
         to: adminEmail,
         replyTo: email,
         subject: `🔔 NEW ADMISSION ENQUIRY - ${course} - ${name}`,
         html: `
-          <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px; border: 1px solid #0a2a66;">
-            <h2 style="color: #0a2a66; background: #f0f4ff; padding: 10px;">📋 NEW ADMISSION ENQUIRY</h2>
-            <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 15px 0;">
-              <p><strong>👤 Student Name:</strong> ${name}</p>
-              <p><strong>📱 Mobile Number:</strong> ${mobile}</p>
-              <p><strong>✉️ Email:</strong> ${email}</p>
-              <p><strong>📚 Course:</strong> ${course}</p>
-              <p><strong>💬 Message:</strong> ${message || 'No message provided'}</p>
-              <p><strong>🕐 Submitted At:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
-              <p><strong>🆔 Application ID:</strong> ${admission._id}</p>
-              <p><strong>📋 Reference:</strong> AIMS-${new Date().getFullYear()}-${admission._id.toString().slice(-6).toUpperCase()}</p>
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <style>
+              body { font-family: Arial, sans-serif; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #0a2a66; }
+              .header { background: #0a2a66; color: white; padding: 15px; text-align: center; }
+              .content { padding: 20px; background: #f9f9f9; }
+              .field { margin: 10px 0; }
+              .label { font-weight: bold; color: #0a2a66; }
+              .highlight { background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; }
+              .footer { text-align: center; color: #666; font-size: 12px; margin-top: 20px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h2>📋 NEW ADMISSION ENQUIRY</h2>
+              </div>
+              <div class="content">
+                <div class="field"><span class="label">👤 Student Name:</span> ${name}</div>
+                <div class="field"><span class="label">📱 Mobile Number:</span> ${mobile}</div>
+                <div class="field"><span class="label">✉️ Email:</span> ${email}</div>
+                <div class="field"><span class="label">📚 Course:</span> ${course}</div>
+                <div class="field"><span class="label">💬 Message:</span> ${message || 'No message provided'}</div>
+                <div class="field"><span class="label">🕐 Submitted At:</span> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</div>
+                <div class="field"><span class="label">🆔 Application ID:</span> ${admission._id}</div>
+                <div class="field"><span class="label">📋 Reference:</span> ${admission.referenceNumber || 'N/A'}</div>
+                
+                <div class="highlight">
+                  <p><strong>⚠️ ACTION REQUIRED:</strong> Please contact the student within 24 hours.</p>
+                </div>
+              </div>
+              <div class="footer">
+                <p>This is an automated notification from AIMS Admission System.</p>
+              </div>
             </div>
-            <p style="color: #d32f2f;"><strong>⚠️ ACTION REQUIRED:</strong> Please contact the student within 24 hours.</p>
-            <hr/>
-            <p style="font-size: 12px; color: #666;">This is an automated notification from AIMS Admission System.</p>
-          </div>
+          </body>
+          </html>
         `,
-        text: `NEW ADMISSION ENQUIRY\n\nStudent Name: ${name}\nMobile Number: ${mobile}\nEmail: ${email}\nCourse: ${course}\nMessage: ${message || 'No message provided'}\nSubmitted At: ${new Date().toLocaleString()}\nApplication ID: ${admission._id}\n\nACTION REQUIRED: Please contact the student within 24 hours.`
+        text: `
+NEW ADMISSION ENQUIRY
+=====================
+Student Name: ${name}
+Mobile Number: ${mobile}
+Email: ${email}
+Course: ${course}
+Message: ${message || 'No message provided'}
+Submitted At: ${new Date().toLocaleString()}
+Application ID: ${admission._id}
+
+ACTION REQUIRED: Please contact the student within 24 hours.
+        `
       };
 
-      await sendEmailWithRetry(adminMailOptions);
-      emailResults.admin = true;
-      console.log(`✅ Admin email sent to ${adminEmail}`);
+      await sendEmail(adminMailOptions);
+      adminEmailSent = true;
+      console.log(`✅ Admin email sent successfully to ${adminEmail}`);
     } catch (adminError) {
-      console.error('❌ Failed to send admin email:', adminError.message);
-      emailResults.errors.push(`Admin email failed: ${adminError.message}`);
+      console.error('❌ Admin email failed:', adminError.message);
+      emailErrors.push(`Admin email: ${adminError.message}`);
     }
 
-    // Send student auto-reply
+    // 4b: Send Auto-Reply to Student
     try {
+      console.log(`📤 Sending auto-reply to student: ${email}`);
+      
       const studentMailOptions = {
         from: `"AIMS Admission" <${process.env.EMAIL_USER}>`,
         to: email,
         subject: `Thank you for your admission enquiry - AIMS Bhubaneswar`,
         html: `
-          <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px;">
-            <h2 style="color: #0a2a66;">Thank You for Your Admission Enquiry</h2>
-            <p>Dear ${name},</p>
-            <p>Thank you for submitting your admission enquiry for <strong>${course}</strong> program at <strong>Aditya Institute of Management Studies (AIMS)</strong>, Bhubaneswar.</p>
-            <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 15px 0;">
-              <p>✅ We have received your details and our admission counselor will contact you within <strong>24-48 hours</strong>.</p>
-              <p>📧 Your Application ID: <strong>${admission._id}</strong></p>
-              <p>📋 Reference: <strong>AIMS-${new Date().getFullYear()}-${admission._id.toString().slice(-6).toUpperCase()}</strong></p>
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <style>
+              body { font-family: Arial, sans-serif; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { color: #0a2a66; }
+              .content { padding: 20px; background: #f5f5f5; border-radius: 5px; }
+              .highlight { background: #d4edda; padding: 15px; border-radius: 5px; }
+              .footer { text-align: center; color: #666; font-size: 12px; margin-top: 20px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h2>Thank You for Your Admission Enquiry</h2>
+              </div>
+              <p>Dear ${name},</p>
+              <p>Thank you for submitting your admission enquiry for <strong>${course}</strong> program at <strong>Aditya Institute of Management Studies (AIMS)</strong>, Bhubaneswar.</p>
+              
+              <div class="content">
+                <div class="highlight">
+                  <p>✅ We have received your details and our admission counselor will contact you within <strong>24-48 hours</strong>.</p>
+                  <p>📧 Your Application ID: <strong>${admission._id}</strong></p>
+                  <p>📋 Reference: <strong>${admission.referenceNumber || 'N/A'}</strong></p>
+                </div>
+              </div>
+              
+              <h3>Next Steps:</h3>
+              <ul>
+                <li>Our admission counselor will contact you shortly</li>
+                <li>You'll receive detailed information about the program</li>
+                <li>We'll guide you through the admission process</li>
+              </ul>
+              
+              <p>Best regards,<br/>
+              <strong>Admission Office</strong><br/>
+              AIMS Bhubaneswar</p>
+              <hr/>
+              <div class="footer">
+                <p>This is an automated confirmation. Please do not reply to this email.</p>
+              </div>
             </div>
-            <p><strong>Next Steps:</strong></p>
-            <ul>
-              <li>Our admission counselor will contact you shortly</li>
-              <li>You'll receive detailed information about the program</li>
-              <li>We'll guide you through the admission process</li>
-            </ul>
-            <p>Best regards,<br/>
-            <strong>Admission Office</strong><br/>
-            AIMS Bhubaneswar</p>
-            <hr/>
-            <p style="font-size: 12px; color: #999;">This is an automated confirmation. Please do not reply to this email.</p>
-          </div>
+          </body>
+          </html>
         `,
-        text: `Thank You for Your Admission Enquiry\n\nDear ${name},\n\nThank you for submitting your admission enquiry for ${course} program at Aditya Institute of Management Studies (AIMS), Bhubaneswar.\n\nWe have received your details and our admission counselor will contact you within 24-48 hours.\n\nYour Application ID: ${admission._id}\nReference: AIMS-${new Date().getFullYear()}-${admission._id.toString().slice(-6).toUpperCase()}\n\nBest regards,\nAdmission Office\nAIMS Bhubaneswar`
+        text: `
+Thank You for Your Admission Enquiry
+=====================================
+Dear ${name},
+
+Thank you for submitting your admission enquiry for ${course} program at Aditya Institute of Management Studies (AIMS), Bhubaneswar.
+
+✅ We have received your details and our admission counselor will contact you within 24-48 hours.
+📧 Your Application ID: ${admission._id}
+
+Best regards,
+Admission Office
+AIMS Bhubaneswar
+        `
       };
 
-      await sendEmailWithRetry(studentMailOptions);
-      emailResults.student = true;
-      console.log(`✅ Auto-reply sent to student: ${email}`);
+      await sendEmail(studentMailOptions);
+      studentEmailSent = true;
+      console.log(`✅ Auto-reply sent successfully to ${email}`);
     } catch (studentError) {
-      console.error('❌ Failed to send student email:', studentError.message);
-      emailResults.errors.push(`Student email failed: ${studentError.message}`);
+      console.error('❌ Student email failed:', studentError.message);
+      emailErrors.push(`Student email: ${studentError.message}`);
     }
 
-    const responseTime = Date.now() - startTime;
-
-    // Prepare response based on email sending status - CHANGED VARIABLE NAME TO responseMessage
-    let responseMessage = 'Admission form submitted successfully!';
+    // ========== PREPARE RESPONSE ==========
+    console.log('📤 Step 5: Sending response to user');
+    
+    let responseMessage = '✅ Admission form submitted successfully!';
     let statusCode = 201;
 
-    if (emailResults.admin && emailResults.student) {
+    if (adminEmailSent && studentEmailSent) {
       responseMessage = '✅ Admission form submitted successfully! Admin has been notified and you will receive a confirmation email shortly.';
-    } else if (emailResults.admin && !emailResults.student) {
+    } else if (adminEmailSent && !studentEmailSent) {
       responseMessage = '⚠️ Form submitted but auto-reply email could not be sent. Admin has been notified.';
       statusCode = 207;
-    } else if (!emailResults.admin && emailResults.student) {
+    } else if (!adminEmailSent && studentEmailSent) {
       responseMessage = '⚠️ Form submitted but admin notification failed. Our team will still contact you.';
       statusCode = 207;
     } else {
@@ -287,23 +346,24 @@ app.post('/api/submit-admission', async (req, res) => {
 
     res.status(statusCode).json({
       success: true,
-      message: responseMessage, // USING responseMessage INSTEAD OF message
+      message: responseMessage,
       data: {
         id: admission._id,
         name: admission.name,
         course: admission.course,
         email: admission.emailAddress,
         mobile: admission.mobileNumber,
-        submittedAt: admission.submittedAt,
-        reference: `AIMS-${new Date().getFullYear()}-${admission._id.toString().slice(-6).toUpperCase()}`
+        reference: admission.referenceNumber || 'N/A',
+        submittedAt: admission.submittedAt
       },
       emailStatus: {
-        adminNotified: emailResults.admin,
-        autoReplySent: emailResults.student,
-        errors: emailResults.errors.length > 0 ? emailResults.errors : null
-      },
-      responseTime: `${responseTime}ms`
+        adminNotified: adminEmailSent,
+        autoReplySent: studentEmailSent,
+        errors: emailErrors.length > 0 ? emailErrors : null
+      }
     });
+    
+    console.log('✅ Step 6: Process completed successfully');
 
   } catch (error) {
     console.error('❌ Submission error:', error);
@@ -316,18 +376,16 @@ app.post('/api/submit-admission', async (req, res) => {
       });
     }
     
-    // Check for duplicate key error
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
-        message: 'You have already submitted an admission enquiry. Our team will contact you soon.'
+        message: 'You have already submitted an admission enquiry.'
       });
     }
     
     res.status(500).json({ 
       success: false, 
-      message: 'Server error. Please try again.',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: 'Server error. Please try again.'
     });
   }
 });
@@ -335,83 +393,35 @@ app.post('/api/submit-admission', async (req, res) => {
 // ====================== TEST EMAIL ENDPOINT ======================
 app.get('/api/test-email', async (req, res) => {
   try {
-    console.log('📧 Testing email configuration...');
+    console.log('📧 Testing email...');
     
-    if (!transporter) {
-      transporter = createTransporter();
-      if (!transporter) {
-        return res.status(400).json({
-          success: false,
-          message: 'Email transporter not configured. Check EMAIL_USER and EMAIL_PASS in .env'
-        });
-      }
-    }
-    
-    const result = await sendEmailWithRetry({
+    const result = await sendEmail({
       from: `"AIMS Test" <${process.env.EMAIL_USER}>`,
       to: 'adityainstitute.admission@gmail.com',
       subject: '✅ Test Email from AIMS Admission System',
       html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px;">
-          <h2 style="color: #0a2a66;">✅ Email Configuration Test</h2>
-          <p>This is a test email from the AIMS Admission System.</p>
-          <p>If you receive this, email is working correctly!</p>
-          <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-          <hr/>
-          <p style="font-size: 12px; color: #666;">Automated test from AIMS Backend</p>
-        </div>
+        <h2>✅ Email Configuration Test</h2>
+        <p>This is a test email from the AIMS Admission System.</p>
+        <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+        <p>If you receive this, email is working correctly!</p>
       `
     });
     
     res.json({
       success: true,
       message: '✅ Test email sent successfully!',
-      messageId: result.messageId,
-      details: {
-        from: process.env.EMAIL_USER,
-        to: 'adityainstitute.admission@gmail.com',
-        time: new Date().toISOString()
-      }
+      messageId: result.messageId
     });
   } catch (error) {
     console.error('❌ Test email error:', error);
     res.status(500).json({
       success: false,
-      message: 'Test email failed: ' + error.message,
-      error: error.toString()
+      message: 'Test email failed: ' + error.message
     });
   }
 });
 
-// ====================== EMAIL STATUS ENDPOINT ======================
-app.get('/api/email-status', (req, res) => {
-  const isConfigured = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
-  const transporterReady = !!transporter;
-  
-  // Attempt to initialize if not ready
-  if (isConfigured && !transporterReady) {
-    transporter = createTransporter();
-  }
-  
-  res.json({
-    success: true,
-    emailConfigured: isConfigured,
-    transporterReady: !!transporter,
-    emailUser: process.env.EMAIL_USER || null,
-    adminEmail: 'adityainstitute.admission@gmail.com',
-    message: isConfigured && transporter ? '✅ Email is configured and ready' : '⚠️ Email configuration issues detected',
-    tips: [
-      'Make sure EMAIL_PASS is using Gmail App Password (not regular password)',
-      'Check that 2-Factor Authentication is enabled on Gmail',
-      'Verify the sender email has permission to send emails',
-      'Check Gmail "Less secure app access" settings'
-    ]
-  });
-});
-
 // ====================== ROUTES ======================
-
-// Import routes
 const authRoutes = require('./routes/auth');
 const galleryRoutes = require('./routes/gallery');
 const announcementsRoutes = require('./routes/announcements');
@@ -421,7 +431,6 @@ const blogsRoutes = require('./routes/blogs');
 const adminRoutes = require('./routes/admin');
 const admissionsRoutes = require('./routes/admissions');
 
-// Mount routes
 app.use('/api/auth', authRoutes);
 app.use('/api/gallery', galleryRoutes);
 app.use('/api/announcements', announcementsRoutes);
@@ -435,39 +444,18 @@ app.use('/api/admissions', admissionsRoutes);
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: "🚀 AIMS Backend is running successfully",
-    server: "Hostinger VPS",
-    port: process.env.PORT || 5018,
+    message: "🚀 AIMS Backend is running",
     status: "online",
-    timestamp: new Date().toISOString(),
-    endpoints: {
-      health: "/",
-      status: "/api/status",
-      submitAdmission: "/api/submit-admission",
-      testEmail: "/api/test-email",
-      emailStatus: "/api/email-status",
-      admissions: "/api/admissions",
-      auth: "/api/auth",
-      gallery: "/api/gallery",
-      announcements: "/api/announcements",
-      notices: "/api/notices",
-      careers: "/api/careers",
-      blogs: "/api/blogs",
-      admin: "/api/admin"
-    }
+    timestamp: new Date().toISOString()
   });
 });
 
 app.get('/api/status', (req, res) => {
   res.json({
     success: true,
-    message: "🚀 AIMS Backend is running successfully",
-    server: "Hostinger VPS",
-    port: process.env.PORT || 5018,
+    message: "🚀 AIMS Backend is running",
     status: "online",
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    uptime: process.uptime()
   });
 });
 
@@ -475,48 +463,16 @@ app.get('/api/status', (req, res) => {
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: `Route not found: ${req.method} ${req.url}`,
-    availableEndpoints: [
-      "GET /",
-      "GET /api/status",
-      "POST /api/submit-admission",
-      "GET /api/test-email",
-      "GET /api/email-status",
-      "GET /api/admissions/all",
-      "GET /api/admissions/:id",
-      "GET /api/admissions/stats/summary",
-      "PUT /api/admissions/:id/status",
-      "DELETE /api/admissions/:id"
-    ]
+    message: `Route not found: ${req.method} ${req.url}`
   });
 });
 
-// ====================== ERROR HANDLING MIDDLEWARE ======================
+// ====================== ERROR HANDLER ======================
 app.use((err, req, res, next) => {
   console.error('❌ Server error:', err.stack);
-  
-  // Mongoose validation error
-  if (err.name === 'ValidationError') {
-    const errors = Object.values(err.errors).map(e => e.message);
-    return res.status(400).json({
-      success: false,
-      message: errors[0] || 'Validation error'
-    });
-  }
-  
-  // Mongoose duplicate key error
-  if (err.code === 11000) {
-    const field = Object.keys(err.keyPattern)[0];
-    return res.status(400).json({
-      success: false,
-      message: `${field} already exists`
-    });
-  }
-  
   res.status(500).json({
     success: false,
-    message: 'Internal server error',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    message: 'Internal server error'
   });
 });
 
@@ -524,23 +480,11 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5018;
 
 app.listen(PORT, () => {
-  console.log('='.repeat(50));
+  console.log('='.repeat(60));
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📍 http://localhost:${PORT}`);
-  console.log(`📧 Email configured: ${!!transporter}`);
-  console.log(`📧 Admin email: adityainstitute.admission@gmail.com`);
-  console.log(`📧 Sender email: ${process.env.EMAIL_USER || 'Not set'}`);
-  console.log(`🔄 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log('='.repeat(50));
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error('❌ Unhandled Rejection:', err);
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (err) => {
-  console.error('❌ Uncaught Exception:', err);
-  process.exit(1);
+  console.log(`📧 Admin Email: adityainstitute.admission@gmail.com`);
+  console.log(`📧 Sender Email: ${process.env.EMAIL_USER}`);
+  console.log(`✅ Email configured: ${!!transporter}`);
+  console.log('='.repeat(60));
 });

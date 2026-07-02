@@ -37,47 +37,25 @@ const admissionSchema = new mongoose.Schema({
     type: String,
     enum: ['pending', 'contacted', 'enrolled'],
     default: 'pending'
-  },
-  ipAddress: {
-    type: String
-  },
-  userAgent: {
-    type: String
   }
 }, {
-  timestamps: true // Adds createdAt and updatedAt automatically
+  timestamps: true
 });
 
-// Create compound index to prevent duplicate submissions
-admissionSchema.index({ emailAddress: 1, mobileNumber: 1 }, { unique: false });
-
-// Add index for faster queries
+// Indexes for faster queries
 admissionSchema.index({ emailAddress: 1 });
 admissionSchema.index({ mobileNumber: 1 });
 admissionSchema.index({ submittedAt: -1 });
 admissionSchema.index({ course: 1 });
 admissionSchema.index({ status: 1 });
 
-// Virtual field for formatted date
-admissionSchema.virtual('formattedDate').get(function() {
-  return this.submittedAt ? new Date(this.submittedAt).toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  }) : null;
-});
-
-// Virtual field for application reference number
-admissionSchema.virtual('applicationRef').get(function() {
-  if (!this._id) return null;
+// Virtual for reference number
+admissionSchema.virtual('referenceNumber').get(function() {
   const year = this.submittedAt ? new Date(this.submittedAt).getFullYear() : new Date().getFullYear();
   const id = this._id.toString().slice(-6).toUpperCase();
   return `AIMS-${year}-${id}`;
 });
 
-// Ensure virtuals are included in JSON output
 admissionSchema.set('toJSON', { virtuals: true });
 admissionSchema.set('toObject', { virtuals: true });
 
