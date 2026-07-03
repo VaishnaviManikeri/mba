@@ -49,7 +49,7 @@ const sendAdminNotification = async (admissionData) => {
 const sendStudentThankYou = async (admissionData) => {
     try {
         const mailOptions = {
-            from: `"AIMS Bhubaneswar" <${process.env.EMAIL_USER}>`,
+            from: `"AIMS Pune, Maharashtra, India" <${process.env.EMAIL_USER}>`,
             to: admissionData.email,
             subject: 'Thank You for Your Application',
             html: `
