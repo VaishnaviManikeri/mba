@@ -245,7 +245,7 @@ ACTION REQUIRED: Please contact the student within 24 hours.
       emailErrors.push(`Admin email: ${adminError.message}`);
     }
 
-    // 4b: Send Auto-Reply to Student
+    // 4b: Send Auto-Reply to Student with CORRECT LOCATION
     try {
       console.log(`📤 Sending auto-reply to student: ${email}`);
       
@@ -259,12 +259,14 @@ ACTION REQUIRED: Please contact the student within 24 hours.
           <head>
             <meta charset="UTF-8">
             <style>
-              body { font-family: Arial, sans-serif; }
+              body { font-family: Arial, sans-serif; line-height: 1.6; }
               .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-              .header { color: #0a2a66; }
-              .content { padding: 20px; background: #f5f5f5; border-radius: 5px; }
-              .highlight { background: #d4edda; padding: 15px; border-radius: 5px; }
-              .footer { text-align: center; color: #666; font-size: 12px; margin-top: 20px; }
+              .header { color: #0a2a66; border-bottom: 3px solid #0a2a66; padding-bottom: 10px; }
+              .content { padding: 20px; background: #f5f5f5; border-radius: 5px; margin: 20px 0; }
+              .highlight { background: #d4edda; padding: 15px; border-radius: 5px; border-left: 4px solid #28a745; }
+              .footer { text-align: center; color: #666; font-size: 12px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; }
+              .location { color: #0a2a66; font-weight: bold; }
+              .campus-info { background: #e8f4f8; padding: 15px; border-radius: 5px; margin: 15px 0; }
             </style>
           </head>
           <body>
@@ -272,8 +274,10 @@ ACTION REQUIRED: Please contact the student within 24 hours.
               <div class="header">
                 <h2>Thank You for Your Admission Enquiry</h2>
               </div>
+              
               <p>Dear ${name},</p>
-              <p>Thank you for submitting your admission enquiry for <strong>${course}</strong> program at <strong>Aditya Institute of Management Studies (AIMS)</strong>, Pune, Maharashtra, India.</p>
+              
+              <p>Thank you for submitting your admission enquiry for <strong>${course}</strong> program at <strong>Aditya Institute of Management Studies (AIMS)</strong>, <span class="location">Pune, Maharashtra, India</span>.</p>
               
               <div class="content">
                 <div class="highlight">
@@ -283,19 +287,27 @@ ACTION REQUIRED: Please contact the student within 24 hours.
                 </div>
               </div>
               
-              <h3>Next Steps:</h3>
+              <h3>📌 Next Steps:</h3>
               <ul>
                 <li>Our admission counselor will contact you shortly</li>
                 <li>You'll receive detailed information about the program</li>
                 <li>We'll guide you through the admission process</li>
               </ul>
               
+              <div class="campus-info">
+                <h3>📍 Campus Location:</h3>
+                <p><strong>Aditya Institute of Management Studies (AIMS)</strong><br/>
+                Pune, Maharashtra, India</p>
+              </div>
+              
               <p>Best regards,<br/>
               <strong>Admission Office</strong><br/>
               AIMS Pune</p>
+              
               <hr/>
               <div class="footer">
                 <p>This is an automated confirmation. Please do not reply to this email.</p>
+                <p>© ${new Date().getFullYear()} Aditya Institute of Management Studies, Pune</p>
               </div>
             </div>
           </body>
@@ -304,16 +316,31 @@ ACTION REQUIRED: Please contact the student within 24 hours.
         text: `
 Thank You for Your Admission Enquiry
 =====================================
+
 Dear ${name},
 
 Thank you for submitting your admission enquiry for ${course} program at Aditya Institute of Management Studies (AIMS), Pune, Maharashtra, India.
 
 ✅ We have received your details and our admission counselor will contact you within 24-48 hours.
 📧 Your Application ID: ${admission._id}
+📋 Reference: ${admission.referenceNumber || 'N/A'}
+
+📌 Next Steps:
+- Our admission counselor will contact you shortly
+- You'll receive detailed information about the program
+- We'll guide you through the admission process
+
+📍 Campus Location:
+Aditya Institute of Management Studies (AIMS)
+Pune, Maharashtra, India
 
 Best regards,
 Admission Office
 AIMS Pune
+
+---
+This is an automated confirmation. Please do not reply to this email.
+© ${new Date().getFullYear()} Aditya Institute of Management Studies, Pune
         `
       };
 
@@ -325,14 +352,14 @@ AIMS Pune
       emailErrors.push(`Student email: ${studentError.message}`);
     }
 
-    // ========== PREPARE RESPONSE ==========
+    // ========== PREPARE RESPONSE WITH CORRECT LOCATION ==========
     console.log('📤 Step 5: Sending response to user');
     
     let responseMessage = '✅ Admission form submitted successfully!';
     let statusCode = 201;
 
     if (adminEmailSent && studentEmailSent) {
-      responseMessage = '✅ Admission form submitted successfully! Admin has been notified and you will receive a confirmation email shortly.';
+      responseMessage = `✅ Thank you for submitting your admission enquiry for ${course} program at Aditya Institute of Management Studies (AIMS), Pune, Maharashtra, India. Our team will contact you soon.`;
     } else if (adminEmailSent && !studentEmailSent) {
       responseMessage = '⚠️ Form submitted but auto-reply email could not be sent. Admin has been notified.';
       statusCode = 207;
@@ -354,7 +381,8 @@ AIMS Pune
         email: admission.emailAddress,
         mobile: admission.mobileNumber,
         reference: admission.referenceNumber || 'N/A',
-        submittedAt: admission.submittedAt
+        submittedAt: admission.submittedAt,
+        location: 'Pune, Maharashtra, India'
       },
       emailStatus: {
         adminNotified: adminEmailSent,
@@ -404,6 +432,7 @@ app.get('/api/test-email', async (req, res) => {
         <p>This is a test email from the AIMS Admission System.</p>
         <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
         <p>If you receive this, email is working correctly!</p>
+        <p><strong>Location:</strong> Pune, Maharashtra, India</p>
       `
     });
     
