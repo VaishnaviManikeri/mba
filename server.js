@@ -252,7 +252,7 @@ ACTION REQUIRED: Please contact the student within 24 hours.
       const studentMailOptions = {
         from: `"AIMS Admission" <${process.env.EMAIL_USER}>`,
         to: email,
-        subject: `Thank you for your admission enquiry - AIMS Bhubaneswar`,
+        subject: `Thank you for your admission enquiry - AIMS Pune`,
         html: `
           <!DOCTYPE html>
           <html>
@@ -273,7 +273,7 @@ ACTION REQUIRED: Please contact the student within 24 hours.
                 <h2>Thank You for Your Admission Enquiry</h2>
               </div>
               <p>Dear ${name},</p>
-              <p>Thank you for submitting your admission enquiry for <strong>${course}</strong> program at <strong>Aditya Institute of Management Studies (AIMS)</strong>, Bhubaneswar.</p>
+              <p>Thank you for submitting your admission enquiry for <strong>${course}</strong> program at <strong>Aditya Institute of Management Studies (AIMS)</strong>, Pune, Maharashtra, India.</p>
               
               <div class="content">
                 <div class="highlight">
@@ -292,7 +292,7 @@ ACTION REQUIRED: Please contact the student within 24 hours.
               
               <p>Best regards,<br/>
               <strong>Admission Office</strong><br/>
-              AIMS Bhubaneswar</p>
+              AIMS Pune</p>
               <hr/>
               <div class="footer">
                 <p>This is an automated confirmation. Please do not reply to this email.</p>
@@ -306,14 +306,14 @@ Thank You for Your Admission Enquiry
 =====================================
 Dear ${name},
 
-Thank you for submitting your admission enquiry for ${course} program at Aditya Institute of Management Studies (AIMS), Bhubaneswar.
+Thank you for submitting your admission enquiry for ${course} program at Aditya Institute of Management Studies (AIMS), Pune, Maharashtra, India.
 
 ✅ We have received your details and our admission counselor will contact you within 24-48 hours.
 📧 Your Application ID: ${admission._id}
 
 Best regards,
 Admission Office
-AIMS Bhubaneswar
+AIMS Pune
         `
       };
 
