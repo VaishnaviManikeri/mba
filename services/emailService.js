@@ -1,5 +1,8 @@
 const nodemailer = require('nodemailer');
 
+const INSTITUTE_NAME = 'Aditya Institute of Management Studies (AIMS)';
+const INSTITUTE_LOCATION = 'Pune, Maharashtra, India';
+
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 465,
@@ -49,13 +52,12 @@ const sendAdminNotification = async (admissionData) => {
 const sendStudentThankYou = async (admissionData) => {
     try {
         const mailOptions = {
-            from: `"AIMS Pune, Maharashtra, India" <${process.env.EMAIL_USER}>`,
+            from: `"AIMS Pune" <${process.env.EMAIL_USER}>`,
             to: admissionData.email,
             subject: 'Thank You for Your Application',
             html: `
                 <h2>Thank You ${admissionData.name}</h2>
-                <p>We received your admission form successfully.</p>
-                <p><b>Course:</b> ${admissionData.course}</p>
+                <p>Thank you for submitting your admission enquiry for <b>${admissionData.course}</b> program at <b>${INSTITUTE_NAME}</b>, ${INSTITUTE_LOCATION}.</p>
                 <p>Our team will contact you within 24-48 hours.</p>
             `
         };

@@ -8,6 +8,11 @@ dotenv.config();
 
 const app = express();
 
+const INSTITUTE_NAME = 'Aditya Institute of Management Studies (AIMS)';
+const INSTITUTE_LOCATION = 'Pune, Maharashtra, India';
+const getAdmissionThankYouMessage = (course) =>
+  `Thank you for submitting your admission enquiry for ${course} program at ${INSTITUTE_NAME}, ${INSTITUTE_LOCATION}.`;
+
 // ====================== MIDDLEWARE ======================
 const corsOptions = {
   origin: [
@@ -277,7 +282,7 @@ ACTION REQUIRED: Please contact the student within 24 hours.
               
               <p>Dear ${name},</p>
               
-              <p>Thank you for submitting your admission enquiry for <strong>${course}</strong> program at <strong>Aditya Institute of Management Studies (AIMS)</strong>, <span class="location">Pune, Maharashtra, India</span>.</p>
+              <p>Thank you for submitting your admission enquiry for <strong>${course}</strong> program at <strong>${INSTITUTE_NAME}</strong>, <span class="location">${INSTITUTE_LOCATION}</span>.</p>
               
               <div class="content">
                 <div class="highlight">
@@ -319,7 +324,7 @@ Thank You for Your Admission Enquiry
 
 Dear ${name},
 
-Thank you for submitting your admission enquiry for ${course} program at Aditya Institute of Management Studies (AIMS), Pune, Maharashtra, India.
+${getAdmissionThankYouMessage(course)}
 
 ✅ We have received your details and our admission counselor will contact you within 24-48 hours.
 📧 Your Application ID: ${admission._id}
@@ -359,7 +364,7 @@ This is an automated confirmation. Please do not reply to this email.
     let statusCode = 201;
 
     if (adminEmailSent && studentEmailSent) {
-      responseMessage = `✅ Thank you for submitting your admission enquiry for ${course} program at Aditya Institute of Management Studies (AIMS), Pune, Maharashtra, India. Our team will contact you soon.`;
+      responseMessage = `✅ ${getAdmissionThankYouMessage(course)} Our team will contact you soon.`;
     } else if (adminEmailSent && !studentEmailSent) {
       responseMessage = '⚠️ Form submitted but auto-reply email could not be sent. Admin has been notified.';
       statusCode = 207;
